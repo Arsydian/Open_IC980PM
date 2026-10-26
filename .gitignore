@@ -7,3 +7,6 @@ release/
 .env
 .env.local
 coverage/
+docs/REPEATERBOOK_API_REQUEST.md
+docs/*_REQUEST*.md
+

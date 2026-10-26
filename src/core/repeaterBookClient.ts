@@ -57,6 +57,8 @@ export interface NormalizedRepeaterCandidate {
   distanceMiles?: number;
   formattedChannelName: string;
   channelRecord: ChannelRecord;
+  detailUrl?: string;
+  rptrId?: string;
 }
 
 /** North America US State & Canadian Province codes used by RepeaterBook `state_id` parameter. */
@@ -238,6 +240,9 @@ export function buildRepeaterBookApiUrl(query: RepeaterBookQuery): string {
   if (query.searchMode === 'location' && query.city && query.city.trim()) {
     params.set('city', query.city.trim());
   }
+  if (query.apiToken && query.apiToken.trim()) {
+    params.set('token', query.apiToken.trim());
+  }
 
   const qs = params.toString();
   return qs ? `${baseUrl}?${qs}` : baseUrl;
@@ -351,6 +356,12 @@ export function filterAndNormalizeRepeaterBookResults(
     ch.bandwidth = 'Wide';
     ch.modulation = 'FM';
     ch.scanAdd = true;
+    const rptrId = entry['Rptr ID'];
+    const stateId = entry['State ID'] || entry.State;
+    const detailUrl = rptrId && stateId
+      ? `https://www.repeaterbook.com/repeaters/details.php?state_id=${encodeURIComponent(stateId)}&ID=${encodeURIComponent(rptrId)}`
+      : 'https://www.repeaterbook.com';
+
     ch.name = formattedChannelName;
     ch.metadata = {
       source: 'repeaterbook',
@@ -358,7 +369,7 @@ export function filterAndNormalizeRepeaterBookResults(
       city,
       state,
       distanceMiles: distanceMiles !== undefined ? Number(distanceMiles.toFixed(1)) : undefined,
-      notes: entry.Notes || entry.Landmark || undefined,
+      notes: `Data courtesy of RepeaterBook.com.${entry.Notes ? ' • ' + entry.Notes : ''}`,
     };
 
     candidates.push({
@@ -377,6 +388,8 @@ export function filterAndNormalizeRepeaterBookResults(
       distanceMiles: distanceMiles !== undefined ? Number(distanceMiles.toFixed(1)) : undefined,
       formattedChannelName,
       channelRecord: ch,
+      detailUrl,
+      rptrId,
     });
   }
 
@@ -403,14 +416,27 @@ export async function queryRepeaterBookApi(
 
   let jsonPayload: unknown;
   if (typeof window !== 'undefined' && window.api?.fetchRepeaterBookJson) {
-    jsonPayload = await window.api.fetchRepeaterBookJson(url);
+    jsonPayload = await window.api.fetchRepeaterBookJson(url, query.apiToken);
   } else {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-    });
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'User-Agent': 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)',
+    };
+    if (query.apiToken && query.apiToken.trim()) {
+      const cleanToken = query.apiToken.trim();
+      headers['Authorization'] = `Bearer ${cleanToken}`;
+      headers['X-Api-Key'] = cleanToken;
+    }
+    const response = await fetch(url, { headers });
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          `RepeaterBook API access denied (HTTP ${response.status}). An approved User-Agent and valid personal app token (rbuapp_...) are required by RepeaterBook.`
+        );
+      }
+      if (response.status === 429) {
+        throw new Error('RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.');
+      }
       throw new Error(`RepeaterBook API returned HTTP ${response.status}`);
     }
     jsonPayload = await response.json();

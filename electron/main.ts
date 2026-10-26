@@ -156,18 +156,30 @@ app.whenReady().then(() => {
     return enumerateAserHidDevices();
   });
 
-  // Secure RepeaterBook proxy endpoint with strict SSRF defense
-  ipcMain.handle('repeaterbook:fetch', async (_event, url: string) => {
+  // Secure RepeaterBook proxy endpoint with strict SSRF defense and app-bound token authentication
+  ipcMain.handle('repeaterbook:fetch', async (_event, url: string, apiToken?: string) => {
     if (!isValidRepeaterBookUrl(url)) {
       throw new Error('Access denied: URL must be an official https://www.repeaterbook.com endpoint.');
     }
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': `Open_IC980PM/${APP_VERSION} (Cross-Platform Amateur Radio CPS; +https://github.com/open-ic980pm)`,
-      },
-    });
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'User-Agent': `Open_IC980PM/${APP_VERSION} (https://github.com/Arsydian/Open_IC980PM; open-source-cps)`,
+    };
+    if (apiToken && typeof apiToken === 'string' && apiToken.trim()) {
+      const cleanToken = apiToken.trim();
+      headers['Authorization'] = `Bearer ${cleanToken}`;
+      headers['X-Api-Key'] = cleanToken;
+    }
+    const response = await fetch(url, { headers });
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          `RepeaterBook API access denied (HTTP ${response.status}). An approved User-Agent and valid personal app token (rbuapp_...) are required by RepeaterBook.`
+        );
+      }
+      if (response.status === 429) {
+        throw new Error('RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.');
+      }
       throw new Error(`RepeaterBook API returned HTTP ${response.status}`);
     }
     return response.json();

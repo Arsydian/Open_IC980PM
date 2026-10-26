@@ -6,10 +6,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
-  appVersion: '1.0.7',
+  appVersion: '1.0.8',
   platform: process.platform,
   listHidDevices: () => ipcRenderer.invoke('hid:listDevices'),
-  fetchRepeaterBookJson: (url: string) => ipcRenderer.invoke('repeaterbook:fetch', url),
+  fetchRepeaterBookJson: (url: string, apiToken?: string) => ipcRenderer.invoke('repeaterbook:fetch', url, apiToken),
   listRollbackSnapshots: () => ipcRenderer.invoke('vault:list'),
   saveRollbackSnapshot: (snapshot: unknown) => ipcRenderer.invoke('vault:save', snapshot),
   deleteRollbackSnapshot: (id: string) => ipcRenderer.invoke('vault:delete', id),

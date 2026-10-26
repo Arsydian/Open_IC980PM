@@ -388,6 +388,8 @@ export interface RepeaterBookQuery {
   maxResults: number;
   /** Only include On-Air / Operational repeaters */
   openOnly?: boolean;
+  /** Personal app-bound RepeaterBook API token (`rbuapp_...`) */
+  apiToken?: string;
 }
 
 /**

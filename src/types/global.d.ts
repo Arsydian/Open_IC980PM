@@ -30,7 +30,7 @@ export interface ElectronBridgeApi {
   /** List connected HIROYASU / ASER-471 USB HID devices */
   listHidDevices: () => Promise<HidDeviceInfo[]>;
   /** Proxy RepeaterBook API HTTP GET requests in Electron main process to avoid browser CORS restrictions */
-  fetchRepeaterBookJson: (url: string) => Promise<unknown>;
+  fetchRepeaterBookJson: (url: string, apiToken?: string) => Promise<unknown>;
   /** Read all snapshots from the local Rollback Vault */
   listRollbackSnapshots: () => Promise<RollbackSnapshot[]>;
   /** Save a snapshot to the local Rollback Vault */

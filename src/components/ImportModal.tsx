@@ -24,6 +24,8 @@ import {
   AlertCircle,
   Loader2,
   CloudLightning,
+  ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import type { ChannelInsertionMode, ChannelRecord, RepeaterBookQuery } from '../types/radio';
 import {
@@ -71,6 +73,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [distanceUnit, setDistanceUnit] = useState<'miles' | 'km'>('miles');
   const [maxResults, setMaxResults] = useState<string>('50');
   const [openOnly, setOpenOnly] = useState<boolean>(true);
+  const [apiToken, setApiToken] = useState<string>(() => {
+    try {
+      return localStorage.getItem('open_ic980pm_rb_token') || '';
+    } catch {
+      return '';
+    }
+  });
 
   const [isLoadingRb, setIsLoadingRb] = useState<boolean>(false);
   const [rbError, setRbError] = useState<string | null>(null);
@@ -103,6 +112,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         distanceUnit,
         maxResults: parsedMax,
         openOnly,
+        apiToken: apiToken.trim() || undefined,
       };
 
       const results = await queryRepeaterBookApi(query);
@@ -290,7 +300,71 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6">
           {/* TAB 1: REPEATERBOOK API */}
           {activeTab === 'repeaterbook' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
+              {/* RepeaterBook Canonical Attribution Banner */}
+              <div className="bg-cyan-500/10 border border-cyan-500/25 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-cyan-200">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>
+                    <strong>Data courtesy of{' '}
+                    <a
+                      href="https://www.repeaterbook.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-bold hover:text-white"
+                    >
+                      RepeaterBook.com
+                    </a></strong>.
+                    {' '}The canonical source for current amateur radio repeater data.
+                  </span>
+                </div>
+                <a
+                  href="https://www.repeaterbook.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-white hover:underline shrink-0"
+                >
+                  <span>RepeaterBook.com</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              {/* RepeaterBook App-Bound API Token (rbuapp_...) */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                <div>
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Personal App-Bound API Token</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    RepeaterBook requires an app-bound token (<code className="text-amber-300 font-mono">rbuapp_...</code>) for distributed applications. Free for all licensed hams.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <input
+                    type="password"
+                    value={apiToken}
+                    onChange={(e) => {
+                      setApiToken(e.target.value);
+                      try {
+                        localStorage.setItem('open_ic980pm_rb_token', e.target.value);
+                      } catch {}
+                    }}
+                    placeholder="Enter rbuapp_... token"
+                    className="w-full md:w-64 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                  />
+                  <a
+                    href="https://www.repeaterbook.com/index.php/api-apps"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-medium whitespace-nowrap transition-colors shrink-0"
+                  >
+                    <span>Get Token</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+
               <form
                 onSubmit={handleSearchRepeaterBook}
                 className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-4"
@@ -555,6 +629,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                           <th className="py-2 px-3">PL / TSQ</th>
                           <th className="py-2 px-3">City / State</th>
                           {searchMode === 'proximity' && <th className="py-2 px-3">Distance</th>}
+                          <th className="py-2 px-3 w-16 text-center">Listing</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -610,6 +685,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                   {item.distanceMiles !== undefined ? `${item.distanceMiles} mi` : '—'}
                                 </td>
                               )}
+                              <td className="py-2 px-3 text-center">
+                                {item.detailUrl && (
+                                  <a
+                                    href={item.detailUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="View canonical listing on RepeaterBook.com"
+                                    className="inline-flex items-center gap-0.5 text-[11px] text-cyan-400 hover:text-cyan-200 hover:underline"
+                                  >
+                                    <span>Link</span>
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </a>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -617,12 +707,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </table>
                   </div>
 
-                  <div className="flex justify-end">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                    <p className="text-[11px] text-slate-400">
+                      <strong>Data courtesy of RepeaterBook.com.</strong> Links direct to canonical repeater listings.
+                    </p>
                     <button
                       type="button"
                       disabled={selectedRbIds.size === 0}
                       onClick={handleImportSelectedRepeaters}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-lg disabled:opacity-40"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-lg disabled:opacity-40 shrink-0 self-end sm:self-auto"
                     >
                       <Download className="w-4 h-4" />
                       <span>Import {selectedRbIds.size} Selected Repeaters</span>
