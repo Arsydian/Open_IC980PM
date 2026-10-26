@@ -400,8 +400,9 @@ export function filterAndNormalizeRepeaterBookResults(
     candidates.sort((a, b) => a.city.localeCompare(b.city) || a.rxFreqHz - b.rxFreqHz);
   }
 
-  // Apply arbitrary result limit (User Requirement #5)
-  const limit = query.maxResults > 0 ? Math.floor(query.maxResults) : candidates.length;
+  // Apply result limit capped at 100
+  const requestedLimit = query.maxResults > 0 ? Math.floor(query.maxResults) : candidates.length;
+  const limit = Math.min(100, requestedLimit);
   return candidates.slice(0, limit);
 }
 

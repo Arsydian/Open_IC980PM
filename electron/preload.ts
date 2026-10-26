@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
-  appVersion: '1.0.8',
+  appVersion: '1.0.9',
   platform: process.platform,
   listHidDevices: () => ipcRenderer.invoke('hid:listDevices'),
   fetchRepeaterBookJson: (url: string, apiToken?: string) => ipcRenderer.invoke('repeaterbook:fetch', url, apiToken),

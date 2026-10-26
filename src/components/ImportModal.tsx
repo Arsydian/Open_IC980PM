@@ -99,7 +99,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setRbError(null);
 
     try {
-      const parsedMax = Math.max(1, parseInt(maxResults, 10) || 50);
+      const parsedMax = Math.max(1, Math.min(100, parseInt(maxResults, 10) || 50));
       const query: RepeaterBookQuery = {
         region,
         searchMode,
@@ -448,7 +448,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         id="rb-max-results"
                         type="number"
                         min={1}
-                        max={500}
+                        max={100}
                         value={maxResults}
                         onChange={(e) => setMaxResults(e.target.value)}
                         className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"

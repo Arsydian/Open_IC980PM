@@ -1,6 +1,6 @@
 {
   "name": "open-ic980pm",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Cross-Platform Radio Programming Studio for the HIROYASU IC-980 Pro Max (Windows, macOS, Linux, WebHID & Mobile PWA)",
   "main": "dist-electron/main.js",
   "type": "module",
