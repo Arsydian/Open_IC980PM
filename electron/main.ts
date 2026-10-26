@@ -8,7 +8,7 @@
  * 4. Persistent Pre-Write EEPROM Safety Snapshot storage ("Rollback Vault")
  */
 
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,21 @@ const pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version: stri
 const APP_VERSION = pkgJson.version || '1.0.0';
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Validates that an incoming URL for RepeaterBook proxying is strictly an official HTTPS
+ * endpoint on repeaterbook.com to prevent Server-Side Request Forgery (SSRF).
+ */
+function isValidRepeaterBookUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return host === 'www.repeaterbook.com' || host === 'repeaterbook.com';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Returns the path to the local Rollback Vault JSON store in the user data directory.
@@ -67,34 +82,66 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 
-  // Enable WebHID device selection seamlessly inside Electron
+  // Confine navigation and popups: open external links in default OS browser, never in Electron
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsedUrl = new URL(navigationUrl);
+      if (devServerUrl) {
+        const devOrigin = new URL(devServerUrl).origin;
+        if (parsedUrl.origin !== devOrigin) {
+          event.preventDefault();
+        }
+      } else if (parsedUrl.protocol !== 'file:') {
+        event.preventDefault();
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
+  // Enable WebHID device selection strictly for radio devices ("ASER _HID" / "ASER-471")
   session.defaultSession.on('select-hid-device', (event, details, callback) => {
     event.preventDefault();
     const aserDevice = details.deviceList.find(
       (d) =>
-        (d.name && d.name.includes('ASER')) ||
-        details.deviceList.length === 1
+        d.name &&
+        (d.name.includes('ASER') || d.name.includes('IC-980') || d.name.includes('PROG81'))
     );
     if (aserDevice) {
       callback(aserDevice.deviceId);
-    } else if (details.deviceList.length > 0) {
-      callback(details.deviceList[0].deviceId);
     } else {
+      // Reject non-radio HID devices (e.g., keyboards, mice, security dongles)
       callback('');
     }
   });
 
   session.defaultSession.setDevicePermissionHandler((details) => {
     if (details.deviceType === 'hid') {
-      return true;
+      const dev = details.device as { name?: string };
+      if (
+        dev &&
+        dev.name &&
+        (dev.name.includes('ASER') || dev.name.includes('IC-980') || dev.name.includes('PROG81'))
+      ) {
+        return true;
+      }
     }
     return false;
   });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
   } else {
@@ -109,7 +156,11 @@ app.whenReady().then(() => {
     return enumerateAserHidDevices();
   });
 
+  // Secure RepeaterBook proxy endpoint with strict SSRF defense
   ipcMain.handle('repeaterbook:fetch', async (_event, url: string) => {
+    if (!isValidRepeaterBookUrl(url)) {
+      throw new Error('Access denied: URL must be an official https://www.repeaterbook.com endpoint.');
+    }
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json',
@@ -126,13 +177,24 @@ app.whenReady().then(() => {
     return readRollbackVault();
   });
 
-  ipcMain.handle('vault:save', (_event, snapshot: { id: string }) => {
+  // Validates snapshot format and bounds maximum payload size to 2MB to prevent disk exhaustion
+  ipcMain.handle('vault:save', (_event, snapshot: unknown) => {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    const s = snapshot as { id?: unknown; timestamp?: unknown };
+    if (typeof s.id !== 'string' || typeof s.timestamp !== 'string') return;
+
+    const serialized = JSON.stringify(snapshot);
+    if (serialized.length > 2 * 1024 * 1024) {
+      throw new Error('Snapshot payload exceeds maximum allowed size (2MB).');
+    }
+
     const existing = readRollbackVault() as Array<{ id: string }>;
-    const filtered = existing.filter((s) => s.id !== snapshot.id);
+    const filtered = existing.filter((item) => item.id !== s.id);
     writeRollbackVault([snapshot, ...filtered]);
   });
 
   ipcMain.handle('vault:delete', (_event, id: string) => {
+    if (typeof id !== 'string') return;
     const existing = readRollbackVault() as Array<{ id: string }>;
     writeRollbackVault(existing.filter((s) => s.id !== id));
   });

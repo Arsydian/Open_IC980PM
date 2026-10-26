@@ -158,6 +158,17 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     expect(exportedCsv).toContain('EXISTING CH1');
     expect(exportedCsv).toContain('TEST 2M');
 
+    // Test CSV formula injection protection
+    const injectionCh = createEmptyChannel(4);
+    injectionCh.used = true;
+    injectionCh.rxFreqHz = 146520000;
+    injectionCh.txFreqHz = 146520000;
+    injectionCh.name = '=cmd|calc';
+    injectionCh.metadata = { notes: '+sum(A1:A10)' };
+    const safeCsv = exportChirpCsv([injectionCh]);
+    expect(safeCsv).toContain("\"'=cmd|calc\"");
+    expect(safeCsv).toContain("\"'+sum(A1:A10)\"");
+
     // Verify NOAA Weather Quick-Pack has hardware NOAA flag enabled on all 7 channels
     expect(NOAA_WEATHER_PACK.channels.length).toBe(7);
     expect(NOAA_WEATHER_PACK.channels.every((c) => c.noaaFlag === true)).toBe(true);

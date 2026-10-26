@@ -297,8 +297,18 @@ export function exportChirpCsv(channels: ChannelRecord[]): string {
     const mode = ch.modulation === 'AM' ? 'AM' : ch.bandwidth === 'Narrow' ? 'NFM' : 'FM';
     const skip = ch.scanAdd ? '' : 'S';
     const power = ch.power === 'High' ? 'High' : ch.power === 'Middle' ? 'Mid' : 'Low';
-    const safeName = `"${ch.name.replace(/"/g, '""')}"`;
-    const safeComment = `"${(ch.metadata?.notes || '').replace(/"/g, '""')}"`;
+    
+    // Sanitize against CSV Formula Injection / DDE execution in spreadsheet viewers
+    const sanitizeCsvFormula = (str: string): string => {
+      let val = str.replace(/"/g, '""');
+      if (/^[=+\-@\t\r]/.test(val)) {
+        val = `'${val}`;
+      }
+      return `"${val}"`;
+    };
+
+    const safeName = sanitizeCsvFormula(ch.name);
+    const safeComment = sanitizeCsvFormula(ch.metadata?.notes || '');
 
     rows.push(
       [
