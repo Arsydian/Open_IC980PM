@@ -1,10 +1,10 @@
 # Open_IC980PM
 
-![Version](https://img.shields.io/badge/version-1.0.3-06b6d4?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.4-06b6d4?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-10b981?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-f59e0b?style=flat-square)
 
-**Open_IC980PM** (`v1.0.3`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, interactive **handset hotkey mapping**, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
+**Open_IC980PM** (`v1.0.4`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, interactive **handset hotkey mapping**, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
 
 ---
 
@@ -145,18 +145,21 @@ Use the top dropdown to control how imported channels are placed into the 500-ch
 
 ---
 
-### 4. Handset Programmable Hotkeys (PF1 / PF2 / PF3)
+### 4. Handset Controls & Firmware Hotkeys
 
 ![Handset Hotkey Configurator](docs/screenshots/handset-hotkeys.png)
 
-The HIROYASU IC-980 Pro Max features 3 programmable function keys on the handset:
-- **PF1 / Side Key 1** (`.Ysf 0xA88C / 0xA88D` ↔ `EEPROM 0x0120C5 / 0x0120C6`)
-- **PF2 / Side Key 2** (`.Ysf 0xA88E / 0xA88F` ↔ `EEPROM 0x0120C7 / 0x0120C8`)
-- **PF3 / Top Key** (`.Ysf 0xA890 / 0xA891` ↔ `EEPROM 0x0120C9 / 0x0120CA`)
+#### Physical Hand Mic (HM-18) Layout
+- **Left Side:** Large orange rubber Push-To-Talk (**PTT**) paddle.
+- **Top Edge:** **Button A** (switches to Main Band / VFO A) and **Button B** (switches to Sub Band / VFO B).
+- **Front Panel:** Standard 16-key DTMF keypad (`0–9`, `*`, `#`, `FUN`, `▲`, `▼`, `EXIT`) and dual RX/TX status LEDs.
+- **`FUN` Shortcut Combinations:** Quick operational actions are triggered via `FUN + [0–9]` (e.g. `FUN + 7` for FM Broadcast Radio, `FUN + 9` for Scanning, `FUN + 2` for Power Level, `FUN + 1` for Squelch, `FUN + 0` to Save Memory Channel).
 
-#### Key Highlights & Mutual Exclusion
-- **No Forced Defaults:** Keys start unassigned by default, allowing you to select your preferred configuration.
-- **Quick-Access Actions:** Quick buttons allow you to assign **Reverse Frequency** (`0x04`) or **Monitor** (`0x01` latching / `0x02` momentary) with one click.
+#### Firmware Codeplug Registers (`Key 1`, `Key 2`, `Key 3`)
+- **PF1 / Key 1** (`.Ysf 0xA88C / 0xA88D` ↔ `EEPROM 0x0120C5 / 0x0120C6`)
+- **PF2 / Key 2** (`.Ysf 0xA88E / 0xA88F` ↔ `EEPROM 0x0120C7 / 0x0120C8`)
+- **PF3 / Key 3** (`.Ysf 0xA890 / 0xA891` ↔ `EEPROM 0x0120C9 / 0x0120CA`)
+- *Platform Architecture Note:* These 3 function registers are inherited from the factory 8118/PROG81LS shared MCU firmware platform. While the physical HM-18 mobile mic does not route auxiliary side keys, the registers are preserved in Open_IC980PM for 100% bit-exact codeplug and EEPROM fidelity with the factory CPS.
 - **Hardware Mutual-Exclusion Rule (`0x0041C23C`):** When Long Press is assigned to `Monitor Momentary` (`0x02`), the radio firmware requires Short Press on that key to remain `Unassigned` (`0x00`) so the squelch opens instantly upon pressing. Open_IC980PM enforces this rule automatically.
 
 ---
