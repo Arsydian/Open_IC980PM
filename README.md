@@ -1,10 +1,10 @@
 # Open_IC980PM
 
-![Version](https://img.shields.io/badge/version-1.0.6-06b6d4?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.7-06b6d4?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-10b981?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-f59e0b?style=flat-square)
 
-**Open_IC980PM** (`v1.0.6`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, interactive **handset hotkey mapping**, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
+**Open_IC980PM** (`v1.0.7`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
 
 ---
 
@@ -19,11 +19,11 @@
   - [1. Connecting, Reading & Writing to the Radio](#1-connecting-reading--writing-to-the-radio)
   - [2. 500-Channel Memory Editor](#2-500-channel-memory-editor)
   - [3. Importing Channels (RepeaterBook, CHIRP & Quick-Packs)](#3-importing-channels-repeaterbook-chirp--quick-packs)
-  - [4. Handset Programmable Hotkeys (PF1 / PF2 / PF3)](#4-handset-programmable-hotkeys-pf1--pf2--pf3)
-  - [5. General Radio Settings & Dual VFO Subsection](#5-general-radio-settings--dual-vfo-subsection)
-  - [6. Advanced Settings Submenu](#6-advanced-settings-submenu)
-  - [7. Custom Boot Logo Studio](#7-custom-boot-logo-studio)
-  - [8. Backup, Restore & Rollback Vault](#8-backup-restore--rollback-vault)
+
+  - [4. General Radio Settings & Dual VFO Subsection](#4-general-radio-settings--dual-vfo-subsection)
+  - [5. Advanced Settings Submenu](#5-advanced-settings-submenu)
+  - [6. Custom Boot Logo Studio](#6-custom-boot-logo-studio)
+  - [7. Backup, Restore & Rollback Vault](#7-backup-restore--rollback-vault)
 - [Building & Testing](#building--testing)
 - [Hardware & Binary Memory Map Reference](#hardware--binary-memory-map-reference)
 - [License](#license)
@@ -145,26 +145,7 @@ Use the top dropdown to control how imported channels are placed into the 500-ch
 
 ---
 
-### 4. Handset Controls & Firmware Hotkeys
-
-![Handset Hotkey Configurator](docs/screenshots/handset-hotkeys.png)
-
-#### Physical Hand Mic (HM-18) Layout
-- **Left Side:** Large orange rubber Push-To-Talk (**PTT**) paddle.
-- **Top Edge:** **Button A** (switches to Main Band / VFO A) and **Button B** (switches to Sub Band / VFO B).
-- **Front Panel:** Standard 16-key DTMF keypad (`0–9`, `*`, `#`, `FUN`, `▲`, `▼`, `EXIT`) and dual RX/TX status LEDs.
-- **`FUN` Shortcut Combinations:** Quick operational actions are triggered via `FUN + [0–9]` (e.g. `FUN + 7` for FM Broadcast Radio, `FUN + 9` for Scanning, `FUN + 2` for Power Level, `FUN + 1` for Squelch, `FUN + 0` to Save Memory Channel).
-
-#### Firmware Codeplug Registers (`Key 1`, `Key 2`, `Key 3`)
-- **PF1 / Key 1** (`.Ysf 0xA88C / 0xA88D` ↔ `EEPROM 0x0120C5 / 0x0120C6`)
-- **PF2 / Key 2** (`.Ysf 0xA88E / 0xA88F` ↔ `EEPROM 0x0120C7 / 0x0120C8`)
-- **PF3 / Key 3** (`.Ysf 0xA890 / 0xA891` ↔ `EEPROM 0x0120C9 / 0x0120CA`)
-- *Platform Architecture Note:* These 3 function registers are inherited from the factory 8118/PROG81LS shared MCU firmware platform. While the physical HM-18 mobile mic does not route auxiliary side keys, the registers are preserved in Open_IC980PM for 100% bit-exact codeplug and EEPROM fidelity with the factory CPS.
-- **Hardware Mutual-Exclusion Rule (`0x0041C23C`):** When Long Press is assigned to `Monitor Momentary` (`0x02`), the radio firmware requires Short Press on that key to remain `Unassigned` (`0x00`) so the squelch opens instantly upon pressing. Open_IC980PM enforces this rule automatically.
-
----
-
-### 5. General Radio Settings & Dual VFO Subsection
+### 4. General Radio Settings & Dual VFO Subsection
 
 ![General Settings & VFO Configuration](docs/screenshots/general-vfo-settings.png)
 
@@ -177,7 +158,7 @@ Navigate to **General & VFO Config** in the sidebar:
 
 ---
 
-### 6. Advanced Settings Submenu
+### 5. Advanced Settings Submenu
 
 ![Advanced Settings Submenu](docs/screenshots/advanced-settings.png)
 
@@ -190,7 +171,7 @@ Click **Advanced Submenu** in the sidebar to access hardware-level controls:
 
 ---
 
-### 7. Custom Boot Logo Studio
+### 6. Custom Boot Logo Studio
 
 ![Custom Boot Logo Studio](docs/screenshots/boot-logo-studio.png)
 
@@ -203,7 +184,7 @@ Open the **Boot Logo Studio** to customize the startup image displayed on the ra
 
 ---
 
-### 8. Backup, Restore & Rollback Vault
+### 7. Backup, Restore & Rollback Vault
 
 Click **Backup & Vault** in the top navigation bar:
 

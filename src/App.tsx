@@ -1,16 +1,14 @@
 /**
  * @file src/App.tsx
  * @description Root application shell for Open_IC980PM.
- * Coordinates the 500-channel grid, Handset Hotkey configurator, General Settings
- * (with VFO A/B subsection), Advanced Settings submenu (Cross-Band Repeater, DTMF,
- * Band Unlock, RF Calibration), Boot Logo Studio, RepeaterBook/CHIRP Importer,
- * and Backup/Rollback Vault.
+ * Coordinates the 500-channel grid, General Settings (with VFO A/B subsection),
+ * Advanced Settings submenu (Cross-Band Repeater, DTMF, Band Unlock, RF Calibration),
+ * Boot Logo Studio, RepeaterBook/CHIRP Importer, and Backup/Rollback Vault.
  */
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
   ListFilter,
-  Sliders,
   Settings,
   ShieldAlert,
   Image as ImageIcon,
@@ -24,7 +22,6 @@ import type {
   CrossBandRepeaterSlot,
   DtmfConfig,
   GeneralSettingsConfig,
-  HandsetHotkeyConfig,
   RadioCodeplug,
   VfoConfig,
 } from './types/radio';
@@ -38,7 +35,6 @@ import { mergeImportedChannels } from './core/chirpCsvCodec';
 import { deserializeRichBundle } from './core/backupBundle';
 import { TitleBar } from './components/TitleBar';
 import { ChannelGrid } from './components/ChannelGrid';
-import { HandsetHotkeys } from './components/HandsetHotkeys';
 import { GeneralSettings } from './components/GeneralSettings';
 import { AdvancedSettings } from './components/AdvancedSettings';
 import { BootLogoStudio } from './components/BootLogoStudio';
@@ -46,7 +42,7 @@ import { ImportModal } from './components/ImportModal';
 import { BackupVaultModal } from './components/BackupVaultModal';
 import { RadioSyncModal } from './components/RadioSyncModal';
 
-type NavView = 'channels' | 'hotkeys' | 'settings_general' | 'settings_advanced' | 'bootlogo';
+type NavView = 'channels' | 'settings_general' | 'settings_advanced' | 'bootlogo';
 
 export const App: React.FC = () => {
   // Starts with a clean, zero-placeholder codeplug (0 sample/test channels)
@@ -88,10 +84,6 @@ export const App: React.FC = () => {
 
   const handleUpdateChannels = (channels: ChannelRecord[]) => {
     applyCodeplugUpdate((prev) => ({ ...prev, channels }));
-  };
-
-  const handleUpdateHotkeys = (hotkeys: HandsetHotkeyConfig) => {
-    applyCodeplugUpdate((prev) => ({ ...prev, hotkeys }));
   };
 
   const handleUpdateGeneral = (general: GeneralSettingsConfig) => {
@@ -236,24 +228,7 @@ export const App: React.FC = () => {
               </span>
             </button>
 
-            {/* 2. Handset Hotkeys */}
-            <button
-              type="button"
-              onClick={() => setActiveView('hotkeys')}
-              className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
-                activeView === 'hotkeys'
-                  ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Sliders className="w-4 h-4 text-emerald-400" />
-                <span>Handset Hotkeys</span>
-              </div>
-              <ChevronRight className="w-3.5 h-3.5 opacity-60 hidden md:block" />
-            </button>
-
-            {/* 3. Settings Section (General + VFO Subsection, and Advanced Submenu) */}
+            {/* Radio Settings Section (General + VFO Subsection, and Advanced Submenu) */}
             <div className="hidden md:block pt-3 pb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Radio Settings
             </div>
@@ -340,13 +315,6 @@ export const App: React.FC = () => {
               onSelectChannel={setSelectedChannelNumber}
               onUpdateChannels={handleUpdateChannels}
               onOpenImportModal={() => setIsImportModalOpen(true)}
-            />
-          )}
-
-          {activeView === 'hotkeys' && (
-            <HandsetHotkeys
-              hotkeys={codeplug.hotkeys}
-              onChange={handleUpdateHotkeys}
             />
           )}
 
