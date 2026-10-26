@@ -30,7 +30,7 @@ interface BootLogoStudioProps {
 export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [badgeTitle, setBadgeTitle] = useState(defaultCallsign || 'IC-980 PRO MAX');
-  const [badgeSubtitle, setBadgeSubtitle] = useState('10W DUAL BAND');
+  const [badgeSubtitle, setBadgeSubtitle] = useState('DUAL BAND');
   const [themeColor, setThemeColor] = useState<'cyan' | 'emerald' | 'amber'>('cyan');
   const [rgb565Payload, setRgb565Payload] = useState<Uint8Array | null>(null);
   const [flashStatus, setFlashStatus] = useState<string | null>(null);

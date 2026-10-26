@@ -735,9 +735,9 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
                         }
                         className="w-full bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-[11px] text-slate-200 focus:border-cyan-500 focus:outline-none"
                       >
-                        <option value="High">High (10W)</option>
-                        <option value="Middle">Mid (5W)</option>
-                        <option value="Low">Low (1W)</option>
+                        <option value="High">High</option>
+                        <option value="Middle">Mid</option>
+                        <option value="Low">Low</option>
                       </select>
                     ) : (
                       <span className="text-slate-700">—</span>

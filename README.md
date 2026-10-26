@@ -1,10 +1,10 @@
 # Open_IC980PM
 
-![Version](https://img.shields.io/badge/version-1.0.2-06b6d4?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.3-06b6d4?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-10b981?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-f59e0b?style=flat-square)
 
-**Open_IC980PM** (`v1.0.2`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** 10W dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, interactive **handset hotkey mapping**, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
+**Open_IC980PM** (`v1.0.3`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, interactive **handset hotkey mapping**, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
 
 ---
 
@@ -97,7 +97,7 @@ The main view provides a high-density, responsive 500-channel grid designed for 
 - **Inline Editing:** Click directly on any cell to edit:
   - **RX & TX Frequency (MHz):** Enter frequencies with up to 5 decimal places. The application automatically calculates and displays the repeater shift badge (`Simplex`, `+0.600 MHz`, `-5.000 MHz`, `Split`).
   - **Subaudio Signaling:** Independent RX and TX tone selectors supporting standard **50 CTCSS tones** (`67.0–254.1 Hz`), **104 DCS Normal (`DCS-N`)** codes, and **104 DCS Inverted (`DCS-I`)** codes.
-  - **Power Level:** Toggle between `High (10W)`, `Middle (5W)`, and `Low (1W)`.
+  - **Power Level:** Toggle between `Low`, `Mid`, and `High`.
   - **Bandwidth & Modulation:** Switch between `Wide (25 kHz)` / `Narrow (12.5 kHz)` and `FM` / `AM` modulation.
   - **Hardware Flags:** Toggle `Scan Add`, Busy Channel Lockout (`BCL`), `PTT-ID` (`Off`, `BOT`, `EOT`, `BOTH`), Voice Scrambler (`Off`, `1..8`), and the hardware **NOAA Weather Alert bit** (`Byte 59 Bit 4 = 0x10`).
 - **Batch Actions & Reordering:**

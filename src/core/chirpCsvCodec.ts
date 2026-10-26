@@ -296,7 +296,7 @@ export function exportChirpCsv(channels: ChannelRecord[]): string {
 
     const mode = ch.modulation === 'AM' ? 'AM' : ch.bandwidth === 'Narrow' ? 'NFM' : 'FM';
     const skip = ch.scanAdd ? '' : 'S';
-    const power = ch.power === 'High' ? '10W' : ch.power === 'Middle' ? '5W' : '1W';
+    const power = ch.power === 'High' ? 'High' : ch.power === 'Middle' ? 'Mid' : 'Low';
     const safeName = `"${ch.name.replace(/"/g, '""')}"`;
     const safeComment = `"${(ch.metadata?.notes || '').replace(/"/g, '""')}"`;
 

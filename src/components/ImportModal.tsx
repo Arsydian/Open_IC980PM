@@ -665,7 +665,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   rows={6}
                   value={csvText}
                   onChange={(e) => handleParseCsv(e.target.value)}
-                  placeholder={`Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Skip,Power,Comment\n1,W6PW RPT,145.150000,-,0.600000,Tone,114.8,88.5,023,NN,FM,5.00,,10W,San Francisco`}
+                  placeholder={`Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Skip,Power,Comment\n1,W6PW RPT,145.150000,-,0.600000,Tone,114.8,88.5,023,NN,FM,5.00,,High,San Francisco`}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
                 />
               </div>

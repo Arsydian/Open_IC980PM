@@ -262,9 +262,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
             onChange={(e) => onUpdate({ ...vfo, power: e.target.value as TxPower })}
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
           >
-            <option value="High">High (10W)</option>
-            <option value="Middle">Middle (5W)</option>
-            <option value="Low">Low (1W)</option>
+            <option value="High">High</option>
+            <option value="Middle">Mid</option>
+            <option value="Low">Low</option>
           </select>
         </div>
 
