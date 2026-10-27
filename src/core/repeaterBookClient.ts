@@ -281,7 +281,7 @@ export function filterAndNormalizeRepeaterBookResults(
   const candidates: NormalizedRepeaterCandidate[] = [];
 
   const maxRadiusMiles =
-    query.searchMode === 'proximity' && query.radius && query.radius > 0
+    query.radius && query.radius > 0
       ? query.distanceUnit === 'km'
         ? query.radius * 0.621371
         : query.radius
@@ -289,6 +289,32 @@ export function filterAndNormalizeRepeaterBookResults(
 
   const cityFilter =
     query.searchMode === 'location' && query.city ? query.city.trim().toLowerCase() : '';
+
+  // In location mode with a city, find the center coordinates of that city to anchor the radius filter
+  let cityCenterLat: number | undefined;
+  let cityCenterLon: number | undefined;
+  if (query.searchMode === 'location' && cityFilter) {
+    let sumLat = 0;
+    let sumLon = 0;
+    let count = 0;
+    for (let j = 0; j < rawResults.length; j++) {
+      const r = rawResults[j];
+      const rCity = (r['Nearest City'] || r.County || r.Landmark || '').trim().toLowerCase();
+      if (rCity.includes(cityFilter) || cityFilter.includes(rCity)) {
+        const lat = parseFloat(r.Lat || '');
+        const lon = parseFloat(r.Long || '');
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          sumLat += lat;
+          sumLon += lon;
+          count++;
+        }
+      }
+    }
+    if (count > 0) {
+      cityCenterLat = sumLat / count;
+      cityCenterLon = sumLon / count;
+    }
+  }
 
   for (let i = 0; i < rawResults.length; i++) {
     const entry = rawResults[i];
@@ -325,19 +351,15 @@ export function filterAndNormalizeRepeaterBookResults(
     const rxFreqHz = Math.round(rxMhz * 1_000_000);
     const txFreqHz = Math.round(txMhz * 1_000_000);
 
-    // 4. City/County substring filter (in location mode)
+    // 4. Geographic scoping & radius filtering
     const city = (entry['Nearest City'] || entry.County || entry.Landmark || '').trim();
     const county = (entry.County || '').trim();
-    if (cityFilter) {
-      const matchesCity = city.toLowerCase().includes(cityFilter);
-      const matchesCounty = county.toLowerCase().includes(cityFilter);
-      if (!matchesCity && !matchesCounty) {
-        continue;
-      }
-    }
+    const rLat = parseFloat(entry.Lat || '');
+    const rLon = parseFloat(entry.Long || '');
+    const hasCoords = Number.isFinite(rLat) && Number.isFinite(rLon);
 
-    // 5. Proximity / Radius filter (in proximity mode)
     let distanceMiles: number | undefined;
+
     if (
       query.searchMode === 'proximity' &&
       typeof query.latitude === 'number' &&
@@ -345,14 +367,23 @@ export function filterAndNormalizeRepeaterBookResults(
       Number.isFinite(query.latitude) &&
       Number.isFinite(query.longitude)
     ) {
-      const rLat = parseFloat(entry.Lat || '');
-      const rLon = parseFloat(entry.Long || '');
-      if (!Number.isFinite(rLat) || !Number.isFinite(rLon)) {
-        continue;
-      }
+      if (!hasCoords) continue;
       distanceMiles = computeHaversineMiles(query.latitude, query.longitude, rLat, rLon);
       if (maxRadiusMiles !== undefined && distanceMiles > maxRadiusMiles) {
         continue;
+      }
+    } else if (query.searchMode === 'location' && cityFilter) {
+      if (cityCenterLat !== undefined && cityCenterLon !== undefined && hasCoords) {
+        distanceMiles = computeHaversineMiles(cityCenterLat, cityCenterLon, rLat, rLon);
+        if (maxRadiusMiles !== undefined && distanceMiles > maxRadiusMiles) {
+          continue;
+        }
+      } else {
+        const matchesCity = city.toLowerCase().includes(cityFilter);
+        const matchesCounty = county.toLowerCase().includes(cityFilter);
+        if (!matchesCity && !matchesCounty) {
+          continue;
+        }
       }
     }
 
@@ -414,8 +445,8 @@ export function filterAndNormalizeRepeaterBookResults(
     });
   }
 
-  // Sort by distance if in proximity mode, otherwise by city then frequency
-  if (query.searchMode === 'proximity') {
+  // Sort by distance if distance was computed, otherwise by city then frequency
+  if (query.searchMode === 'proximity' || (query.searchMode === 'location' && cityCenterLat !== undefined)) {
     candidates.sort((a, b) => (a.distanceMiles ?? 99999) - (b.distanceMiles ?? 99999));
   } else {
     candidates.sort((a, b) => a.city.localeCompare(b.city) || a.rxFreqHz - b.rxFreqHz);

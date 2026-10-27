@@ -97,7 +97,7 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
         Lat: '38.50',
         Long: '-122.00',
         Callsign: 'WRGMRS',
-        'Nearest City': 'San Francisco',
+        'Nearest City': 'Vacaville',
         State: 'CA',
         'FM Analog': 'Yes',
         'Operational Status': 'On-Air',
@@ -137,10 +137,24 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
       region: 'us_ca',
       searchMode: 'location',
       city: 'San Francisco',
+      radius: 35,
       maxResults: 10,
     });
     const gmrs = nonAmateurResults.find((c) => c.callsign === 'WRGMRS');
     expect(gmrs).toBeUndefined();
+
+    // 4. City + Radius filtering in State/Jurisdiction location mode
+    const cityRadiusResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
+      region: 'us_ca',
+      searchMode: 'location',
+      city: 'San Francisco',
+      radius: 15,
+      distanceUnit: 'miles',
+      maxResults: 10,
+    });
+    expect(cityRadiusResults.length).toBeGreaterThan(0);
+    expect(cityRadiusResults[0].callsign).toBe('W6PW');
+    expect(cityRadiusResults[0].distanceMiles).toBeDefined();
 
     // 4. Native proximity query parameter builder
     const proxUrl = buildRepeaterBookApiUrl({

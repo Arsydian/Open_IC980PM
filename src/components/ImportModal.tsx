@@ -107,6 +107,20 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setIsLoadingRb(true);
     setRbError(null);
 
+    if (searchMode === 'location') {
+      if (!cityFilter.trim()) {
+        setRbError('City is required for state/jurisdiction queries to anchor the search and limit query size.');
+        setIsLoadingRb(false);
+        return;
+      }
+      const parsedRadius = parseFloat(radius);
+      if (!Number.isFinite(parsedRadius) || parsedRadius <= 0) {
+        setRbError('A search radius is required to constrain the query around the selected city.');
+        setIsLoadingRb(false);
+        return;
+      }
+    }
+
     try {
       const parsedMax = Math.max(1, Math.min(100, parseInt(maxResults, 10) || 50));
       const query: RepeaterBookQuery = {
@@ -117,7 +131,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         city: searchMode === 'location' ? cityFilter.trim() : undefined,
         latitude: searchMode === 'proximity' ? parseFloat(latitude) : undefined,
         longitude: searchMode === 'proximity' ? parseFloat(longitude) : undefined,
-        radius: searchMode === 'proximity' ? parseFloat(radius) : undefined,
+        radius: parseFloat(radius) || 35,
         distanceUnit,
         maxResults: parsedMax,
         openOnly,
@@ -508,27 +522,55 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   )}
 
                   {searchMode === 'location' ? (
-                    <div className="md:col-span-2">
-                      <label className="block text-xs text-slate-400 mb-1">
-                        City or County (Optional filter)
-                      </label>
-                      <input
-                        type="text"
-                        value={cityFilter}
-                        onChange={(e) => setCityFilter(e.target.value)}
-                        placeholder="e.g. San Francisco, Los Angeles, Toronto..."
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">
+                          City / Town * <span className="text-cyan-400 text-[10px]">(Required)</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cityFilter}
+                          onChange={(e) => setCityFilter(e.target.value)}
+                          placeholder="e.g. San Francisco, Dallas, Seattle..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">
+                          Search Radius * <span className="text-cyan-400 text-[10px]">(Required)</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            required
+                            min={1}
+                            max={300}
+                            value={radius}
+                            onChange={(e) => setRadius(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
+                          />
+                          <select
+                            value={distanceUnit}
+                            onChange={(e) => setDistanceUnit(e.target.value as 'miles' | 'km')}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200"
+                          >
+                            <option value="miles">mi</option>
+                            <option value="km">km</option>
+                          </select>
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <>
                       <div>
                         <label className="block text-xs text-slate-400 mb-1">
-                          Center Latitude
+                          Center Latitude *
                         </label>
                         <input
                           type="number"
                           step="any"
+                          required
                           value={latitude}
                           onChange={(e) => setLatitude(e.target.value)}
                           placeholder="37.7749"
@@ -537,11 +579,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                       </div>
                       <div>
                         <label className="block text-xs text-slate-400 mb-1">
-                          Center Longitude
+                          Center Longitude *
                         </label>
                         <input
                           type="number"
                           step="any"
+                          required
                           value={longitude}
                           onChange={(e) => setLongitude(e.target.value)}
                           placeholder="-122.4194"
@@ -550,11 +593,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                       </div>
                       <div>
                         <label className="block text-xs text-slate-400 mb-1">
-                          Search Radius
+                          Search Radius *
                         </label>
                         <div className="flex items-center gap-1">
                           <input
                             type="number"
+                            required
                             min={1}
                             max={500}
                             value={radius}
@@ -574,10 +618,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </>
                   )}
 
+                  {searchMode === 'location' && (
+                    <div className="md:col-span-4 -mt-1">
+                      <p className="text-[11px] text-slate-400 italic">
+                        * City and radius are required to anchor the search and constrain query size around your local area.
+                      </p>
+                    </div>
+                  )}
+
                   {searchMode === 'proximity' && (
                     <div className="md:col-span-4 -mt-1">
                       <p className="text-[11px] text-slate-400 italic">
-                        * Proximity radius calculates distance from center coordinates within the selected State/Province or Country.
+                        * Proximity radius queries coordinates natively across state and regional borders.
                       </p>
                     </div>
                   )}
