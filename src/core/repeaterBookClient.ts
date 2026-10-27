@@ -53,7 +53,7 @@ export interface NormalizedRepeaterCandidate {
   rxToneValue: number;
   txToneType: ToneType;
   txToneValue: number;
-  band: '2m' | '70cm' | 'GMRS' | 'VHF' | 'UHF';
+  band: '2m' | '70cm';
   distanceMiles?: number;
   formattedChannelName: string;
   channelRecord: ChannelRecord;
@@ -231,15 +231,34 @@ export function buildRepeaterBookApiUrl(query: RepeaterBookQuery): string {
       : 'https://www.repeaterbook.com/api/export.php';
 
   const params = new URLSearchParams();
-  if (query.country && query.country.trim()) {
-    params.set('country', query.country.trim());
+
+  if (
+    query.searchMode === 'proximity' &&
+    typeof query.latitude === 'number' &&
+    typeof query.longitude === 'number' &&
+    Number.isFinite(query.latitude) &&
+    Number.isFinite(query.longitude)
+  ) {
+    // Native RepeaterBook Proximity Search (qtype=prox)
+    params.set('qtype', 'prox');
+    params.set('lat', query.latitude.toString());
+    params.set('lng', query.longitude.toString());
+    const radius = query.radius && query.radius > 0 ? query.radius : 35;
+    params.set('dist', radius.toString());
+    params.set('dunit', query.distanceUnit === 'km' ? 'km' : 'mi');
+  } else {
+    // Location / Regional Search (State/Province or Country + City)
+    if (query.country && query.country.trim()) {
+      params.set('country', query.country.trim());
+    }
+    if (query.state && query.state.trim()) {
+      params.set('state_id', query.state.trim());
+    }
+    if (query.city && query.city.trim()) {
+      params.set('city', query.city.trim());
+    }
   }
-  if (query.state && query.state.trim()) {
-    params.set('state_id', query.state.trim());
-  }
-  if (query.searchMode === 'location' && query.city && query.city.trim()) {
-    params.set('city', query.city.trim());
-  }
+
   if (query.apiToken && query.apiToken.trim()) {
     params.set('token', query.apiToken.trim());
   }
@@ -288,29 +307,17 @@ export function filterAndNormalizeRepeaterBookResults(
       continue;
     }
 
-    // 3. Parse Output (RX) and Input (TX) Frequencies and filter to transceiver's operational range:
-    // VHF (136–174 MHz) & UHF (400–480 MHz) FM Analog (covering 2m Ham, 70cm Ham, and GMRS)
+    // 3. Parse Output (RX) and Input (TX) Frequencies and filter to 2m (144–148 MHz) & 70cm (420–450 MHz) FM Analog
     const rxMhz = parseFloat(entry.Frequency || '');
     if (!Number.isFinite(rxMhz)) continue;
 
-    const isVhf = rxMhz >= 136.0 && rxMhz <= 174.0;
-    const isUhf = rxMhz >= 400.0 && rxMhz <= 480.0;
-    if (!isVhf && !isUhf) {
+    const is2m = rxMhz >= 144.0 && rxMhz <= 148.0;
+    const is70cm = rxMhz >= 420.0 && rxMhz <= 450.0;
+    if (!is2m && !is70cm) {
       continue;
     }
 
-    let candidateBand: '2m' | '70cm' | 'GMRS' | 'VHF' | 'UHF';
-    if (rxMhz >= 144.0 && rxMhz <= 148.0) {
-      candidateBand = '2m';
-    } else if (rxMhz >= 420.0 && rxMhz <= 450.0) {
-      candidateBand = '70cm';
-    } else if (rxMhz >= 462.55 && rxMhz <= 462.73) {
-      candidateBand = 'GMRS';
-    } else if (isVhf) {
-      candidateBand = 'VHF';
-    } else {
-      candidateBand = 'UHF';
-    }
+    const band: '2m' | '70cm' = is2m ? '2m' : '70cm';
 
     const txMhzRaw = parseFloat(entry['Input Freq'] || '');
     const txMhz = Number.isFinite(txMhzRaw) && txMhzRaw >= 100.0 ? txMhzRaw : rxMhz;
@@ -398,7 +405,7 @@ export function filterAndNormalizeRepeaterBookResults(
       rxToneValue: rxTone.value,
       txToneType: txTone.type,
       txToneValue: txTone.value,
-      band: candidateBand,
+      band,
       distanceMiles: distanceMiles !== undefined ? Number(distanceMiles.toFixed(1)) : undefined,
       formattedChannelName,
       channelRecord: ch,

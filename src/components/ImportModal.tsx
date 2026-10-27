@@ -129,7 +129,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setSelectedRbIds(new Set(results.map((r) => r.id)));
       if (results.length === 0) {
         setRbError(
-          'No compatible VHF (136–174 MHz) or UHF (400–480 MHz) FM Analog repeaters matched your search criteria.'
+          'No 2m (144–148 MHz) or 70cm (420–450 MHz) FM Analog repeaters matched your search criteria.'
         );
       }
     } catch (err) {
@@ -214,7 +214,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <span>Import Channels — RepeaterBook API, CHIRP CSV & Quick-Packs</span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Automatically normalized for the HIROYASU IC-980 Pro Max (`City - Callsign` 16-char naming & VHF/UHF FM Analog filtering)
+              Automatically normalized for the HIROYASU IC-980 Pro Max (`City - Callsign` 16-char naming & 2m/70cm FM Analog filtering)
             </p>
           </div>
           <button
@@ -467,7 +467,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
                       />
                       <span className="text-[11px] text-slate-400">
-                        VHF & UHF FM Analog (Max 100)
+                        2m & 70cm FM Analog (Max 100)
                       </span>
                     </div>
                   </div>

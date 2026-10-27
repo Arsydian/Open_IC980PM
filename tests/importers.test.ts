@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  buildRepeaterBookApiUrl,
   clearRepeaterBookCache,
   filterAndNormalizeRepeaterBookResults,
   formatCityCallsignName,
@@ -131,20 +132,35 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     });
     expect(limited.length).toBe(1);
 
-    // 3. Normalized GMRS candidate
-    const gmrsResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
+    // 3. Verifies that non-2m/70cm frequencies (e.g. GMRS or 1.2GHz) are strictly filtered out per spec
+    const nonAmateurResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
       searchMode: 'location',
       city: 'San Francisco',
       maxResults: 10,
     });
-    const gmrs = gmrsResults.find((c) => c.callsign === 'WRGMRS');
-    expect(gmrs).toBeDefined();
-    expect(gmrs?.band).toBe('GMRS');
-    expect(gmrs?.rxFreqHz).toBe(462675000);
-    expect(gmrs?.txFreqHz).toBe(467675000);
+    const gmrs = nonAmateurResults.find((c) => c.callsign === 'WRGMRS');
+    expect(gmrs).toBeUndefined();
 
-    // 4. Duplicate suppression cache can be cleared
+    // 4. Native proximity query parameter builder
+    const proxUrl = buildRepeaterBookApiUrl({
+      region: 'us_ca',
+      searchMode: 'proximity',
+      latitude: 37.7749,
+      longitude: -122.4194,
+      radius: 35,
+      distanceUnit: 'miles',
+      maxResults: 50,
+      apiToken: 'test_token',
+    });
+    expect(proxUrl).toContain('qtype=prox');
+    expect(proxUrl).toContain('lat=37.7749');
+    expect(proxUrl).toContain('lng=-122.4194');
+    expect(proxUrl).toContain('dist=35');
+    expect(proxUrl).toContain('dunit=mi');
+    expect(proxUrl).toContain('token=test_token');
+
+    // 5. Duplicate suppression cache can be cleared
     expect(() => clearRepeaterBookCache()).not.toThrow();
   });
 
