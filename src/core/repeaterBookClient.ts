@@ -53,7 +53,7 @@ export interface NormalizedRepeaterCandidate {
   rxToneValue: number;
   txToneType: ToneType;
   txToneValue: number;
-  band: '2m' | '70cm';
+  band: '2m' | '70cm' | 'GMRS' | 'VHF' | 'UHF';
   distanceMiles?: number;
   formattedChannelName: string;
   channelRecord: ChannelRecord;
@@ -288,14 +288,28 @@ export function filterAndNormalizeRepeaterBookResults(
       continue;
     }
 
-    // 3. Parse Output (RX) and Input (TX) Frequencies and filter to 2m (144-148 MHz) & 70cm (420-450 MHz)
+    // 3. Parse Output (RX) and Input (TX) Frequencies and filter to transceiver's operational range:
+    // VHF (136–174 MHz) & UHF (400–480 MHz) FM Analog (covering 2m Ham, 70cm Ham, and GMRS)
     const rxMhz = parseFloat(entry.Frequency || '');
     if (!Number.isFinite(rxMhz)) continue;
 
-    const is2m = rxMhz >= 144.0 && rxMhz <= 148.0;
-    const is70cm = rxMhz >= 420.0 && rxMhz <= 450.0;
-    if (!is2m && !is70cm) {
+    const isVhf = rxMhz >= 136.0 && rxMhz <= 174.0;
+    const isUhf = rxMhz >= 400.0 && rxMhz <= 480.0;
+    if (!isVhf && !isUhf) {
       continue;
+    }
+
+    let candidateBand: '2m' | '70cm' | 'GMRS' | 'VHF' | 'UHF';
+    if (rxMhz >= 144.0 && rxMhz <= 148.0) {
+      candidateBand = '2m';
+    } else if (rxMhz >= 420.0 && rxMhz <= 450.0) {
+      candidateBand = '70cm';
+    } else if (rxMhz >= 462.55 && rxMhz <= 462.73) {
+      candidateBand = 'GMRS';
+    } else if (isVhf) {
+      candidateBand = 'VHF';
+    } else {
+      candidateBand = 'UHF';
     }
 
     const txMhzRaw = parseFloat(entry['Input Freq'] || '');
@@ -384,7 +398,7 @@ export function filterAndNormalizeRepeaterBookResults(
       rxToneValue: rxTone.value,
       txToneType: txTone.type,
       txToneValue: txTone.value,
-      band: is2m ? '2m' : '70cm',
+      band: candidateBand,
       distanceMiles: distanceMiles !== undefined ? Number(distanceMiles.toFixed(1)) : undefined,
       formattedChannelName,
       channelRecord: ch,
@@ -406,14 +420,36 @@ export function filterAndNormalizeRepeaterBookResults(
   return candidates.slice(0, limit);
 }
 
+interface CachedApiResponse {
+  timestamp: number;
+  data: RepeaterBookRawEntry[];
+}
+
+const queryCache = new Map<string, CachedApiResponse>();
+export const REPEATERBOOK_CACHE_TTL_MS = 5 * 60 * 1000; // 5-minute session cache for duplicate suppression
+
+/** Clears all cached RepeaterBook query responses (useful for manual refresh or tests). */
+export function clearRepeaterBookCache(): void {
+  queryCache.clear();
+}
+
 /**
  * Executes a live RepeaterBook API query using either the Electron IPC proxy (no CORS)
  * or direct `fetch` in Web/PWA environments.
+ *
+ * Implements Duplicate Suppression: identical queries within a 5-minute window are served
+ * immediately from local session memory to eliminate redundant hits on RepeaterBook servers.
  */
 export async function queryRepeaterBookApi(
   query: RepeaterBookQuery
 ): Promise<NormalizedRepeaterCandidate[]> {
   const url = buildRepeaterBookApiUrl(query);
+  const cacheKey = `${url}|${query.apiToken || ''}`;
+
+  const cached = queryCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < REPEATERBOOK_CACHE_TTL_MS) {
+    return filterAndNormalizeRepeaterBookResults(cached.data, query);
+  }
 
   let jsonPayload: unknown;
   if (typeof window !== 'undefined' && window.api?.fetchRepeaterBookJson) {
@@ -450,6 +486,8 @@ export async function queryRepeaterBookApi(
     : Array.isArray(jsonPayload)
     ? (jsonPayload as RepeaterBookRawEntry[])
     : [];
+
+  queryCache.set(cacheKey, { timestamp: Date.now(), data: rawArray });
 
   return filterAndNormalizeRepeaterBookResults(rawArray, query);
 }

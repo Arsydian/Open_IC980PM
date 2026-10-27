@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  clearRepeaterBookCache,
   filterAndNormalizeRepeaterBookResults,
   formatCityCallsignName,
   RepeaterBookRawEntry,
@@ -84,6 +85,22 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
         DMR: 'Yes',
         'Operational Status': 'On-Air',
       },
+      {
+        // GMRS repeater pair (462.675 / 467.675 MHz) supported by radio UHF range
+        'State ID': '06',
+        'Rptr ID': '5',
+        Frequency: '462.6750',
+        'Input Freq': '467.6750',
+        PL: '141.3',
+        TSQ: '141.3',
+        Lat: '38.50',
+        Long: '-122.00',
+        Callsign: 'WRGMRS',
+        'Nearest City': 'San Francisco',
+        State: 'CA',
+        'FM Analog': 'Yes',
+        'Operational Status': 'On-Air',
+      },
     ];
 
     // 1. Proximity search with maxResults = 2
@@ -113,6 +130,22 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
       maxResults: 1,
     });
     expect(limited.length).toBe(1);
+
+    // 3. Normalized GMRS candidate
+    const gmrsResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
+      region: 'us_ca',
+      searchMode: 'location',
+      city: 'San Francisco',
+      maxResults: 10,
+    });
+    const gmrs = gmrsResults.find((c) => c.callsign === 'WRGMRS');
+    expect(gmrs).toBeDefined();
+    expect(gmrs?.band).toBe('GMRS');
+    expect(gmrs?.rxFreqHz).toBe(462675000);
+    expect(gmrs?.txFreqHz).toBe(467675000);
+
+    // 4. Duplicate suppression cache can be cleared
+    expect(() => clearRepeaterBookCache()).not.toThrow();
   });
 
   it('parses and exports CHIRP CSV and merges channels via append_empty, insert_at, and overwrite_at', () => {

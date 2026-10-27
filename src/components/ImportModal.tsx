@@ -85,6 +85,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [rbError, setRbError] = useState<string | null>(null);
   const [rbCandidates, setRbCandidates] = useState<NormalizedRepeaterCandidate[]>([]);
   const [selectedRbIds, setSelectedRbIds] = useState<Set<string>>(new Set());
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+
+  React.useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
 
   // CHIRP CSV State
   const [csvText, setCsvText] = useState<string>('');
@@ -120,11 +129,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setSelectedRbIds(new Set(results.map((r) => r.id)));
       if (results.length === 0) {
         setRbError(
-          'No 2m (144–148 MHz) or 70cm (420–450 MHz) FM Analog repeaters matched your search criteria.'
+          'No compatible VHF (136–174 MHz) or UHF (400–480 MHz) FM Analog repeaters matched your search criteria.'
         );
       }
     } catch (err) {
-      setRbError(err instanceof Error ? err.message : 'Failed to query RepeaterBook API.');
+      const msg = err instanceof Error ? err.message : 'Failed to query RepeaterBook API.';
+      setRbError(msg);
+      if (msg.includes('429')) {
+        setCooldownSeconds(60);
+      }
     } finally {
       setIsLoadingRb(false);
     }
@@ -201,7 +214,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <span>Import Channels — RepeaterBook API, CHIRP CSV & Quick-Packs</span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Automatically normalized for the HIROYASU IC-980 Pro Max (`City - Callsign` 16-char naming & 2m/70cm FM Analog filtering)
+              Automatically normalized for the HIROYASU IC-980 Pro Max (`City - Callsign` 16-char naming & VHF/UHF FM Analog filtering)
             </p>
           </div>
           <button
@@ -454,7 +467,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
                       />
                       <span className="text-[11px] text-slate-400">
-                        2m & 70cm FM Analog only
+                        VHF & UHF FM Analog (Max 100)
                       </span>
                     </div>
                   </div>
@@ -561,13 +574,35 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </>
                   )}
 
+                  {searchMode === 'proximity' && (
+                    <div className="md:col-span-4 -mt-1">
+                      <p className="text-[11px] text-slate-400 italic">
+                        * Proximity radius calculates distance from center coordinates within the selected State/Province or Country.
+                      </p>
+                    </div>
+                  )}
+
+                  {cooldownSeconds > 0 && (
+                    <div className="md:col-span-4 p-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>
+                        RepeaterBook rate limit active (HTTP 429). Search is locked for {cooldownSeconds}s to protect the API.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="submit"
-                      disabled={isLoadingRb}
+                      disabled={isLoadingRb || cooldownSeconds > 0}
                       className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-sm disabled:opacity-50"
                     >
-                      {isLoadingRb ? (
+                      {cooldownSeconds > 0 ? (
+                        <>
+                          <AlertCircle className="w-4 h-4 text-amber-300" />
+                          <span>Rate Limited (Wait {cooldownSeconds}s)</span>
+                        </>
+                      ) : isLoadingRb ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
                           <span>Querying...</span>
