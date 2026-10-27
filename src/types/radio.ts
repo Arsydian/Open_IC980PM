@@ -363,6 +363,26 @@ export interface RadioCodeplug {
 export type ChannelInsertionMode = 'append_empty' | 'insert_at' | 'overwrite_at';
 
 /**
+ * Frequency band selection for RepeaterBook query filtering.
+ * Standard IC-980 Pro Max configuration supports 2m (144-148 MHz) & 70cm (420-450 MHz).
+ * Additional bands can be unlocked via Advanced -> Band Unlock.
+ */
+export interface RepeaterBandOptions {
+  /** 2m Amateur Band (144–148 MHz) — default true */
+  include2m?: boolean;
+  /** 70cm Amateur Band (420–450 MHz) — default true */
+  include70cm?: boolean;
+  /** US GMRS 462/467 MHz Repeater Pairs (462.550–467.725 MHz) — default false */
+  includeGmrs?: boolean;
+  /** 1.25m / 220 MHz Amateur Band (222–225 MHz) — default false */
+  include125m?: boolean;
+  /** Extended VHF Commercial, Marine, Public Safety (136–174 MHz outside 2m) — default false */
+  includeVhfExt?: boolean;
+  /** Extended UHF Commercial, LMR, Business (400–520 MHz outside 70cm & GMRS) — default false */
+  includeUhfExt?: boolean;
+}
+
+/**
  * RepeaterBook API Query Parameters (User Requirement #5).
  */
 export interface RepeaterBookQuery {
@@ -390,6 +410,8 @@ export interface RepeaterBookQuery {
   openOnly?: boolean;
   /** Personal app-bound RepeaterBook API token (`rbuapp_...`) */
   apiToken?: string;
+  /** Advanced frequency band selection options (defaults to 2m and 70cm only) */
+  bands?: RepeaterBandOptions;
 }
 
 /**

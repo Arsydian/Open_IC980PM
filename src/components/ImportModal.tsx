@@ -26,10 +26,15 @@ import {
   CloudLightning,
   ExternalLink,
   KeyRound,
+  ChevronDown,
+  ChevronRight,
+  Sliders,
+  Unlock,
 } from 'lucide-react';
-import type { ChannelInsertionMode, ChannelRecord, RepeaterBookQuery } from '../types/radio';
+import type { ChannelInsertionMode, ChannelRecord, RepeaterBandOptions, RepeaterBookQuery } from '../types/radio';
 import {
   NormalizedRepeaterCandidate,
+  RepeaterBandId,
   US_CA_STATES,
   queryRepeaterBookApi,
 } from '../core/repeaterBookClient';
@@ -87,6 +92,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [selectedRbIds, setSelectedRbIds] = useState<Set<string>>(new Set());
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
 
+  // Advanced Band Selection State (Collapsed by Default)
+  const [showAdvancedBands, setShowAdvancedBands] = useState<boolean>(false);
+  const [include2m, setInclude2m] = useState<boolean>(true);
+  const [include70cm, setInclude70cm] = useState<boolean>(true);
+  const [includeGmrs, setIncludeGmrs] = useState<boolean>(false);
+  const [include125m, setInclude125m] = useState<boolean>(false);
+  const [includeVhfExt, setIncludeVhfExt] = useState<boolean>(false);
+  const [includeUhfExt, setIncludeUhfExt] = useState<boolean>(false);
+
   React.useEffect(() => {
     if (cooldownSeconds <= 0) return;
     const timer = setInterval(() => {
@@ -121,6 +135,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       }
     }
 
+    if (!include2m && !include70cm && !includeGmrs && !include125m && !includeVhfExt && !includeUhfExt) {
+      setRbError('Please enable at least one frequency band in the Advanced Band Filters.');
+      setIsLoadingRb(false);
+      return;
+    }
+
     try {
       const parsedMax = Math.max(1, Math.min(100, parseInt(maxResults, 10) || 50));
       const query: RepeaterBookQuery = {
@@ -136,6 +156,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         maxResults: parsedMax,
         openOnly,
         apiToken: apiToken.trim() || undefined,
+        bands: {
+          include2m,
+          include70cm,
+          includeGmrs,
+          include125m,
+          includeVhfExt,
+          includeUhfExt,
+        },
       };
 
       const results = await queryRepeaterBookApi(query);
@@ -143,7 +171,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setSelectedRbIds(new Set(results.map((r) => r.id)));
       if (results.length === 0) {
         setRbError(
-          'No 2m (144–148 MHz) or 70cm (420–450 MHz) FM Analog repeaters matched your search criteria.'
+          'No FM Analog repeaters matched your search criteria in the selected frequency bands.'
         );
       }
     } catch (err) {
@@ -667,6 +695,147 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                       )}
                     </button>
                   </div>
+
+                  {/* Advanced Band Sub-Menu (Collapsed by Default) */}
+                  <div className="md:col-span-4 pt-1 border-t border-slate-800/60 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedBands(!showAdvancedBands)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors focus:outline-none"
+                    >
+                      {showAdvancedBands ? (
+                        <ChevronDown className="w-4 h-4 text-cyan-400" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                      )}
+                      <span className="flex items-center gap-1.5 font-semibold text-slate-300">
+                        <Sliders className="w-3.5 h-3.5 text-cyan-500" />
+                        Advanced Frequency Bands &amp; Out-of-Band Unlocks
+                      </span>
+                      {(includeGmrs || include125m || includeVhfExt || includeUhfExt || !include2m || !include70cm) && (
+                        <span className="ml-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          Custom Bands Active
+                        </span>
+                      )}
+                    </button>
+
+                    {showAdvancedBands && (
+                      <div className="mt-2.5 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                        <div className="flex items-start gap-2 text-[11px] text-slate-300 bg-slate-950/80 p-2.5 rounded-lg border border-slate-800/80">
+                          <Unlock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>IC-980 Pro Max Frequency Limits:</strong> Standard factory programming is configured for 2m (144–148 MHz) &amp; 70cm (420–450 MHz). Channels on GMRS or extended commercial/public-safety bands can be programmed, but transmitting requires unlocking frequency limits in <em>Advanced &rarr; Band Unlock</em>.
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                          {/* 2m Amateur Band */}
+                          <label className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/50 border border-slate-800 hover:border-slate-700 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={include2m}
+                              onChange={(e) => setInclude2m(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-slate-200">2m Amateur (144–148 MHz)</div>
+                              <div className="text-[10px] text-slate-400">Standard factory VHF ham band</div>
+                            </div>
+                          </label>
+
+                          {/* 70cm Amateur Band */}
+                          <label className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-950/50 border border-slate-800 hover:border-slate-700 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={include70cm}
+                              onChange={(e) => setInclude70cm(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-slate-200">70cm Amateur (420–450 MHz)</div>
+                              <div className="text-[10px] text-slate-400">Standard factory UHF ham band</div>
+                            </div>
+                          </label>
+
+                          {/* GMRS Repeaters */}
+                          <label className="flex items-start gap-2.5 p-2 rounded-lg bg-amber-500/5 border border-amber-500/30 hover:border-amber-500/50 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={includeGmrs}
+                              onChange={(e) => setIncludeGmrs(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-amber-200 flex items-center gap-1.5">
+                                <span>GMRS (462 / 467 MHz)</span>
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">
+                                  Unlocked
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">8 repeater pairs (462.550–467.725 MHz)</div>
+                            </div>
+                          </label>
+
+                          {/* 1.25m Amateur Band */}
+                          <label className="flex items-start gap-2.5 p-2 rounded-lg bg-purple-500/5 border border-purple-500/30 hover:border-purple-500/50 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={include125m}
+                              onChange={(e) => setInclude125m(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-700 text-purple-500 focus:ring-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-purple-200 flex items-center gap-1.5">
+                                <span>1.25m Amateur (222–225 MHz)</span>
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
+                                  RX / Mon
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">220 MHz band (monitoring / tri-band)</div>
+                            </div>
+                          </label>
+
+                          {/* Extended VHF */}
+                          <label className="flex items-start gap-2.5 p-2 rounded-lg bg-blue-500/5 border border-blue-500/30 hover:border-blue-500/50 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={includeVhfExt}
+                              onChange={(e) => setIncludeVhfExt(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-700 text-blue-500 focus:ring-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-blue-200 flex items-center gap-1.5">
+                                <span>Extended VHF (136–174 MHz)</span>
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 font-mono">
+                                  Unlocked
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">Commercial, Marine &amp; Public Safety</div>
+                            </div>
+                          </label>
+
+                          {/* Extended UHF */}
+                          <label className="flex items-start gap-2.5 p-2 rounded-lg bg-indigo-500/5 border border-indigo-500/30 hover:border-indigo-500/50 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={includeUhfExt}
+                              onChange={(e) => setIncludeUhfExt(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-700 text-indigo-500 focus:ring-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-indigo-200 flex items-center gap-1.5">
+                                <span>Extended UHF (400–520 MHz)</span>
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono">
+                                  Unlocked
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">Commercial &amp; Business LMR bands</div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </form>
 
@@ -682,8 +851,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="text-xs text-slate-300">
-                      Found <strong className="text-cyan-300">{rbCandidates.length}</strong> 2m/70cm
-                      FM Analog Repeaters ({selectedRbIds.size} selected)
+                      Found <strong className="text-cyan-300">{rbCandidates.length}</strong> Analog
+                      Repeaters ({selectedRbIds.size} selected)
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -742,10 +911,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                               </td>
                               <td className="py-2 px-3">
                                 <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
                                     item.band === '2m'
-                                      ? 'bg-cyan-500/15 text-cyan-300'
-                                      : 'bg-emerald-500/15 text-emerald-300'
+                                      ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                      : item.band === '70cm'
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                      : item.band === 'GMRS'
+                                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      : item.band === '1.25m'
+                                      ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                                      : item.band === 'VHF Ext'
+                                      ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                                      : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
                                   }`}
                                 >
                                   {item.band}

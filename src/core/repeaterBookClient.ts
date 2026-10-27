@@ -11,9 +11,12 @@
  * - Channel name formatted as `City - Callsign` (truncated cleanly to 16 characters)
  */
 
-import type { ChannelRecord, RepeaterBookQuery, ToneType } from '../types/radio';
+import type { ChannelRecord, RepeaterBandOptions, RepeaterBookQuery, ToneType } from '../types/radio';
 import { CTCSS_TONES, DCS_CODES } from './constants';
 import { createEmptyChannel } from './ysfCodec';
+
+/** Supported frequency band identifiers for RepeaterBook classification and filtering. */
+export type RepeaterBandId = '2m' | '70cm' | 'GMRS' | '1.25m' | 'VHF Ext' | 'UHF Ext';
 
 /** Raw repeater entry returned by the RepeaterBook JSON API (`results[]`). */
 export interface RepeaterBookRawEntry {
@@ -53,7 +56,7 @@ export interface NormalizedRepeaterCandidate {
   rxToneValue: number;
   txToneType: ToneType;
   txToneValue: number;
-  band: '2m' | '70cm';
+  band: RepeaterBandId | string;
   distanceMiles?: number;
   formattedChannelName: string;
   channelRecord: ChannelRecord;
@@ -268,10 +271,67 @@ export function buildRepeaterBookApiUrl(query: RepeaterBookQuery): string {
 }
 
 /**
+ * Classifies a repeater output frequency into standard amateur or out-of-band / unlocked bands.
+ */
+export function classifyRepeaterBand(
+  rxMhz: number
+): { bandId: RepeaterBandId; isDefaultBand: boolean } | null {
+  if (rxMhz >= 144.0 && rxMhz <= 148.0) {
+    return { bandId: '2m', isDefaultBand: true };
+  }
+  if (rxMhz >= 420.0 && rxMhz <= 450.0) {
+    return { bandId: '70cm', isDefaultBand: true };
+  }
+  // GMRS Repeater pairs: 462.5500–462.7250 MHz output (+5 MHz input 467.5500–467.7250 MHz)
+  if ((rxMhz >= 462.55 && rxMhz <= 462.7375) || (rxMhz >= 467.55 && rxMhz <= 467.7375)) {
+    return { bandId: 'GMRS', isDefaultBand: false };
+  }
+  // 1.25m Amateur Band (222–225 MHz)
+  if (rxMhz >= 222.0 && rxMhz <= 225.0) {
+    return { bandId: '1.25m', isDefaultBand: false };
+  }
+  // Extended VHF (136–174 MHz outside 2m amateur band)
+  if (rxMhz >= 136.0 && rxMhz <= 174.0) {
+    return { bandId: 'VHF Ext', isDefaultBand: false };
+  }
+  // Extended UHF (400–520 MHz outside 70cm amateur band and GMRS)
+  if (rxMhz >= 400.0 && rxMhz <= 520.0) {
+    return { bandId: 'UHF Ext', isDefaultBand: false };
+  }
+  return null;
+}
+
+/**
+ * Checks whether a given band is permitted under the active query band options.
+ */
+export function isBandAllowed(bandId: RepeaterBandId, bands?: RepeaterBandOptions): boolean {
+  if (!bands) {
+    // Default radio configuration: only standard 2m and 70cm amateur bands
+    return bandId === '2m' || bandId === '70cm';
+  }
+  switch (bandId) {
+    case '2m':
+      return bands.include2m !== false;
+    case '70cm':
+      return bands.include70cm !== false;
+    case 'GMRS':
+      return Boolean(bands.includeGmrs);
+    case '1.25m':
+      return Boolean(bands.include125m);
+    case 'VHF Ext':
+      return Boolean(bands.includeVhfExt);
+    case 'UHF Ext':
+      return Boolean(bands.includeUhfExt);
+    default:
+      return false;
+  }
+}
+
+/**
  * Filters and normalizes raw RepeaterBook entries according to User Requirement #5:
- * - Automatically filters to **2m (`144–148 MHz`) & 70cm (`420–450 MHz`) FM Analog** repeaters
+ * - Automatically filters to 2m, 70cm, or selected unlocked bands (GMRS, 1.25m, Extended VHF/UHF)
  * - Filters by City/State or Lat/Long + Radius (Haversine distance)
- * - Formats each channel name as **`City - Callsign`**
+ * - Formats each channel name as `City - Callsign`
  * - Limits the returned list to `query.maxResults` (`N`)
  */
 export function filterAndNormalizeRepeaterBookResults(
@@ -333,17 +393,16 @@ export function filterAndNormalizeRepeaterBookResults(
       continue;
     }
 
-    // 3. Parse Output (RX) and Input (TX) Frequencies and filter to 2m (144–148 MHz) & 70cm (420–450 MHz) FM Analog
+    // 3. Classify Output (RX) and Input (TX) Frequencies and check against allowed bands
     const rxMhz = parseFloat(entry.Frequency || '');
     if (!Number.isFinite(rxMhz)) continue;
 
-    const is2m = rxMhz >= 144.0 && rxMhz <= 148.0;
-    const is70cm = rxMhz >= 420.0 && rxMhz <= 450.0;
-    if (!is2m && !is70cm) {
+    const classified = classifyRepeaterBand(rxMhz);
+    if (!classified || !isBandAllowed(classified.bandId, query.bands)) {
       continue;
     }
 
-    const band: '2m' | '70cm' = is2m ? '2m' : '70cm';
+    const band: RepeaterBandId = classified.bandId;
 
     const txMhzRaw = parseFloat(entry['Input Freq'] || '');
     const txMhz = Number.isFinite(txMhzRaw) && txMhzRaw >= 100.0 ? txMhzRaw : rxMhz;

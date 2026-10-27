@@ -132,7 +132,7 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     });
     expect(limited.length).toBe(1);
 
-    // 3. Verifies that non-2m/70cm frequencies (e.g. GMRS or 1.2GHz) are strictly filtered out per spec
+    // 3. Verifies that non-2m/70cm frequencies (e.g. GMRS or 1.2GHz) are strictly filtered out by default
     const nonAmateurResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
       searchMode: 'location',
@@ -142,6 +142,41 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     });
     const gmrs = nonAmateurResults.find((c) => c.callsign === 'WRGMRS');
     expect(gmrs).toBeUndefined();
+
+    // 3b. Verifies that GMRS and out-of-band repeaters are included when enabled in advanced bands
+    const gmrsEnabledResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
+      region: 'us_ca',
+      searchMode: 'location',
+      city: 'Vacaville',
+      radius: 10,
+      maxResults: 10,
+      bands: {
+        include2m: true,
+        include70cm: true,
+        includeGmrs: true,
+      },
+    });
+    const gmrsFound = gmrsEnabledResults.find((c) => c.callsign === 'WRGMRS');
+    expect(gmrsFound).toBeDefined();
+    expect(gmrsFound?.band).toBe('GMRS');
+    expect(gmrsFound?.formattedChannelName).toBe('Vacavil - WRGMRS');
+
+    // 3c. Verifies selective band filtering (e.g. 70cm only, excluding 2m)
+    const uhfOnlyResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
+      region: 'us_ca',
+      searchMode: 'proximity',
+      latitude: 37.7749,
+      longitude: -122.4194,
+      radius: 25,
+      maxResults: 10,
+      bands: {
+        include2m: false,
+        include70cm: true,
+      },
+    });
+    expect(uhfOnlyResults.every((c) => c.band === '70cm')).toBe(true);
+    expect(uhfOnlyResults.find((c) => c.callsign === 'W6PW')).toBeUndefined();
+    expect(uhfOnlyResults.find((c) => c.callsign === 'K6OAK')).toBeDefined();
 
     // 4. City + Radius filtering in State/Jurisdiction location mode
     const cityRadiusResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
