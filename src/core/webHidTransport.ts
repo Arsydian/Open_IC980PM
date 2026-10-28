@@ -46,6 +46,33 @@ export function isWebHidSupported(): boolean {
   return typeof navigator !== 'undefined' && 'hid' in navigator;
 }
 
+/** Name of the radio operation currently using the USB connection, or `null` when idle. */
+let activeRadioOperation: string | null = null;
+
+/** Returns the name of the radio operation in progress (e.g. `'Write Radio'`), or `null`. */
+export function getActiveRadioOperation(): string | null {
+  return activeRadioOperation;
+}
+
+/**
+ * Runs `operation` while holding the single radio connection. A second operation started while
+ * one is running (e.g. a Write while a boot-logo flash continues in the background) is refused
+ * before it opens the device, so two programming sessions never interleave on the radio.
+ */
+async function withRadioLock<T>(name: string, operation: () => Promise<T>): Promise<T> {
+  if (activeRadioOperation !== null) {
+    throw new Error(
+      `Another radio operation (${activeRadioOperation}) is still running. Wait for it to finish before starting ${name}.`
+    );
+  }
+  activeRadioOperation = name;
+  try {
+    return await operation();
+  } finally {
+    activeRadioOperation = null;
+  }
+}
+
 /**
  * Requests a HIROYASU IC-980 Pro Max ("ASER-471") USB HID device via the browser WebHID picker.
  */
@@ -277,7 +304,14 @@ async function readEepromImage(
 /**
  * Reads the complete EEPROM image (`0x00000..0x18306`) from the radio via WebHID.
  */
-export async function readRadioViaWebHid(
+export function readRadioViaWebHid(
+  options: { includeCalibration?: boolean; password?: string },
+  onProgress?: (ev: HidProgressEvent) => void
+): Promise<{ eeprom: Uint8Array; calibration?: Uint8Array }> {
+  return withRadioLock('Read Radio', () => readRadioSession(options, onProgress));
+}
+
+async function readRadioSession(
   options: { includeCalibration?: boolean; password?: string },
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<{ eeprom: Uint8Array; calibration?: Uint8Array }> {
@@ -320,7 +354,14 @@ export async function readRadioViaWebHid(
  *    the EEPROM image to write; if it throws, the session ends before any byte is written,
  * 3. writes the returned image (`0x00000..0x1600F`).
  */
-export async function writeRadioViaWebHid(
+export function writeRadioViaWebHid(
+  prepareImage: (currentRadioImage: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+  onProgress?: (ev: HidProgressEvent) => void
+): Promise<void> {
+  return withRadioLock('Write Radio', () => writeRadioSession(prepareImage, onProgress));
+}
+
+async function writeRadioSession(
   prepareImage: (currentRadioImage: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<void> {
@@ -417,7 +458,14 @@ export async function writeRadioViaWebHid(
 /**
  * Flashes a 40,964-byte Big-Endian RGB565 Boot Logo payload to EEPROM `0x1B000` via WebHID.
  */
-export async function flashBootLogoViaWebHid(
+export function flashBootLogoViaWebHid(
+  logoPayload: Uint8Array,
+  onProgress?: (ev: HidProgressEvent) => void
+): Promise<void> {
+  return withRadioLock('Flash Boot Logo', () => flashBootLogoSession(logoPayload, onProgress));
+}
+
+async function flashBootLogoSession(
   logoPayload: Uint8Array,
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<void> {
