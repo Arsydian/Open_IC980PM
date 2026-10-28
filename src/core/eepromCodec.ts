@@ -85,14 +85,23 @@ export function extractChannelEeprom34Bytes(ysfBuf: Uint8Array, channelNumber: n
 /**
  * Marshals a 47,046-byte `.Ysf` buffer into a full Radio EEPROM binary image (`0x00000..0x18306`).
  * Implements `TProgramDialog::GetDataForWrite` (`0x00428F84`).
+ *
+ * @param baseEeprom - the radio's current EEPROM image (read just before writing). When given,
+ *   bytes this codec does not map (unknown settings, VFO padding) keep the radio's values
+ *   instead of being reset to `0x00` / `0xFF`. Unused channel slots are still cleared to `0xFF`.
  */
-export function ysfToEepromImage(ysfBuf: Uint8Array): Uint8Array {
+export function ysfToEepromImage(ysfBuf: Uint8Array, baseEeprom?: Uint8Array): Uint8Array {
   if (ysfBuf.byteLength !== YSF_FILE_SIZE) {
     throw new Error(`Expected ${YSF_FILE_SIZE}-byte .Ysf buffer, got ${ysfBuf.byteLength}`);
   }
 
   const eeprom = new Uint8Array(EEPROM_IMAGE_SIZE);
-  eeprom.fill(0xff);
+  if (baseEeprom && baseEeprom.byteLength >= EEPROM_IMAGE_SIZE) {
+    eeprom.set(baseEeprom.subarray(0, EEPROM_IMAGE_SIZE));
+  } else {
+    eeprom.fill(0xff);
+    eeprom.fill(0x00, 0x12000, 0x12100);
+  }
   const ysfView = new DataView(ysfBuf.buffer, ysfBuf.byteOffset, ysfBuf.byteLength);
   const eepView = new DataView(eeprom.buffer);
 
@@ -102,13 +111,9 @@ export function ysfToEepromImage(ysfBuf: Uint8Array): Uint8Array {
     0x000000
   );
 
-  // 2. Marshal all 500 Channels into banked sectors 0x01000..0x1043F
+  // 2. Marshal all 500 Channels into banked sectors 0x01000..0x1043F (unused slots -> 0xFF)
   for (let ch = 1; ch <= MAX_CHANNELS; ch++) {
-    if (isChannelBitSet(ysfBuf, ch)) {
-      const addr = computeChannelEepromAddress(ch);
-      const chBytes = extractChannelEeprom34Bytes(ysfBuf, ch);
-      eeprom.set(chBytes, addr);
-    }
+    eeprom.set(extractChannelEeprom34Bytes(ysfBuf, ch), computeChannelEepromAddress(ch));
   }
 
   // 3. Marshal VFO A (0x11000..0x1102A) & VFO B (0x11030..0x1105A)
@@ -137,7 +142,6 @@ export function ysfToEepromImage(ysfBuf: Uint8Array): Uint8Array {
   eepView.setUint32(0x11057, ysfView.getUint32(YSF_OFFSETS.VFO_B_OFFSET_HZ, true), true);
 
   // 4. Marshal General Settings & Hotkeys into 0x12000..0x120FB
-  eeprom.fill(0x00, 0x12000, 0x12100);
   // Write timestamp 0x12000..0x12005
   eeprom.set(ysfBuf.subarray(0x0000, 0x0006), 0x12000);
 

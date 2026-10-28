@@ -81,7 +81,7 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
           await saveSnapshotToVault(snap);
 
           // 2. Encode .Ysf -> EEPROM Image to write over USB HID
-          return ysfToEepromImage(encodeYsfBuffer(codeplug));
+          return ysfToEepromImage(encodeYsfBuffer(codeplug), currentRadioImage);
         }, (ev) => setProgress(ev));
         setCompletedMsg(
           'Successfully wrote codeplug to HIROYASU IC-980 Pro Max! The radio’s previous contents were saved to the Rollback Vault.'
