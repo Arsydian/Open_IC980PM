@@ -43,6 +43,7 @@ import { BootLogoStudio } from './components/BootLogoStudio';
 import { ImportModal } from './components/ImportModal';
 import { BackupVaultModal } from './components/BackupVaultModal';
 import { RadioSyncModal } from './components/RadioSyncModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type NavView = 'channels' | 'settings_general' | 'settings_advanced' | 'bootlogo';
 
@@ -326,6 +327,12 @@ export const App: React.FC = () => {
 
         {/* Active Workspace Pane */}
         <main className="flex-1 overflow-hidden relative">
+          {/* Keyed by view so switching views clears a caught error */}
+          <ErrorBoundary
+            key={activeView}
+            title="This view hit an error and was closed"
+            hint="Your codeplug is still loaded: you can switch views, save a .Ysf file or open another file. Reload the app if this keeps happening."
+          >
           {activeView === 'channels' && (
             <ChannelGrid
               codeplug={codeplug}
@@ -366,6 +373,7 @@ export const App: React.FC = () => {
           {activeView === 'bootlogo' && (
             <BootLogoStudio defaultCallsign={codeplug.general.radioCallsign} />
           )}
+          </ErrorBoundary>
 
           {/* Floating Toast Notification */}
           {toast && (
