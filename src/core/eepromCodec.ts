@@ -14,6 +14,7 @@ import {
   YSF_OFFSETS,
   createCleanDefaultYsfBuffer,
   readFixedAscii,
+  writeFixedAscii,
 } from './constants';
 import { decryptRadioPassword, encryptRadioPassword } from './passwordCipher';
 import { isChannelBitSet } from './ysfCodec';
@@ -140,7 +141,7 @@ export function ysfToEepromImage(ysfBuf: Uint8Array): Uint8Array {
   // Write timestamp 0x12000..0x12005
   eeprom.set(ysfBuf.subarray(0x0000, 0x0006), 0x12000);
 
-  // Band Limits in 10Hz units at 0x12006..0x12015 (uMin, uMax, vMin, vMax)
+  // Band Limits in 10Hz units at 0x12006..0x12015 (vMin, vMax, uMin, uMax)
   const uMinMhz = parseFloat(readFixedAscii(ysfBuf, YSF_OFFSETS.BAND_LIMITS_START + 0x00, 16)) || 400.0;
   const uMaxMhz = parseFloat(readFixedAscii(ysfBuf, YSF_OFFSETS.BAND_LIMITS_START + 0x10, 16)) || 480.0;
   const vMinMhz = parseFloat(readFixedAscii(ysfBuf, YSF_OFFSETS.BAND_LIMITS_START + 0x20, 16)) || 136.0;
@@ -234,6 +235,9 @@ export function ysfToEepromImage(ysfBuf: Uint8Array): Uint8Array {
 /**
  * Unmarshals a Radio EEPROM binary image (`0x00000..0x18306`) into a 47,046-byte `.Ysf` buffer.
  * Implements `TProgramDialog::SetDataToSoftware` (`0x00429B50`).
+ *
+ * Fields with no known EEPROM location (cross-band preset slots, DTMF local ID, power-on display
+ * mode) are taken from `baseTemplate`, or factory defaults when no template is given.
  */
 export function eepromImageToYsf(eeprom: Uint8Array, baseTemplate?: Uint8Array): Uint8Array {
   const ysf =
@@ -311,6 +315,22 @@ export function eepromImageToYsf(eeprom: Uint8Array, baseTemplate?: Uint8Array):
 
   // 4. Unmarshal General Settings & Hotkeys from 0x12000..0x120FB
   ysf.set(eeprom.subarray(0x12000, 0x12006), 0x0000);
+
+  // Band Limits: 10Hz units at 0x12006..0x12015 (vMin, vMax, uMin, uMax) -> 16-byte ASCII MHz.
+  // Unprogrammed (0 / 0xFFFFFFFF) or implausible values keep the template's limit.
+  const bandLimitFields: ReadonlyArray<[number, number]> = [
+    [0x12006, YSF_OFFSETS.BAND_LIMITS_START + 0x20],
+    [0x1200a, YSF_OFFSETS.BAND_LIMITS_START + 0x30],
+    [0x1200e, YSF_OFFSETS.BAND_LIMITS_START + 0x00],
+    [0x12012, YSF_OFFSETS.BAND_LIMITS_START + 0x10],
+  ];
+  for (const [eepAddr, ysfOff] of bandLimitFields) {
+    const mhz = eepView.getUint32(eepAddr, true) / 100000;
+    if (mhz >= 18.0 && mhz <= 999.0) {
+      writeFixedAscii(ysf, ysfOff, mhz.toFixed(5), 16);
+    }
+  }
+
   ysf.set(eeprom.subarray(0x1201e, 0x1202e), YSF_OFFSETS.POWER_ON_MSG_1);
   ysf.set(eeprom.subarray(0x1202e, 0x12042), YSF_OFFSETS.POWER_ON_MSG_2);
   ysf.set(eeprom.subarray(0x12046, 0x12054), YSF_OFFSETS.RADIO_CALLSIGN);
