@@ -33,7 +33,7 @@
 ## Quick Start Guide
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (`v18.0.0` or higher)
+- [Node.js](https://nodejs.org/) (`v22.12.0` or higher; required by Electron 45, Vite 8 and Vitest 5)
 - USB programming cable for the HIROYASU IC-980 Pro Max (standard K-plug / accessory connector)
 
 ### Installation & Running
