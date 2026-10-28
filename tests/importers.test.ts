@@ -213,6 +213,47 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     expect(() => clearRepeaterBookCache()).not.toThrow();
   });
 
+  describe('insert_at never drops existing channels', () => {
+    const named = (n: number, name: string) => ({
+      ...createEmptyChannel(n),
+      used: true,
+      rxFreqHz: 146_000_000 + n * 5_000,
+      txFreqHz: 146_000_000 + n * 5_000,
+      name,
+    });
+    const incoming = [named(1, 'NEW1'), named(2, 'NEW2')];
+
+    it('shifts channels only into the empty slots that follow', () => {
+      const existing = createDefaultCodeplug().channels;
+      for (const n of [...Array(10).keys()].map((i) => i + 1)) existing[n - 1] = named(n, `C${n}`);
+      for (let n = 12; n <= 20; n++) existing[n - 1] = named(n, `C${n}`); // channel 11 is a gap
+
+      const { channels, importedCount, skippedCount } = mergeImportedChannels(existing, incoming, 'insert_at', 5);
+      expect([importedCount, skippedCount]).toEqual([2, 0]);
+      const names = channels.slice(0, 22).map((c) => (c.used ? c.name : '-'));
+      expect(names).toEqual([
+        'C1', 'C2', 'C3', 'C4', 'NEW1', 'NEW2', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10',
+        'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C20', '-',
+      ]);
+      expect(channels.every((c, i) => c.channelNumber === i + 1)).toBe(true);
+    });
+
+    it('imports nothing rather than pushing channels past 500 when the list is full', () => {
+      const existing = Array.from({ length: 500 }, (_, i) => named(i + 1, `C${i + 1}`));
+      const { channels, importedCount, skippedCount } = mergeImportedChannels(existing, incoming, 'insert_at', 1);
+      expect([importedCount, skippedCount]).toEqual([0, 2]);
+      expect(channels.map((c) => c.name)).toEqual(existing.map((c) => c.name));
+    });
+
+    it('imports only as many as fit when there is less room than incoming channels', () => {
+      const existing = Array.from({ length: 500 }, (_, i) => named(i + 1, `C${i + 1}`));
+      existing[499] = createEmptyChannel(500);
+      const { channels, importedCount, skippedCount } = mergeImportedChannels(existing, incoming, 'insert_at', 499);
+      expect([importedCount, skippedCount]).toEqual([1, 1]);
+      expect(channels.slice(497).map((c) => c.name)).toEqual(['C498', 'NEW1', 'C499']);
+    });
+  });
+
   it('parses and exports CHIRP CSV and merges channels via append_empty, insert_at, and overwrite_at', () => {
     const csvSample = [
       'Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Skip,Power,Comment',

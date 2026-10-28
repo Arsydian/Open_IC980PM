@@ -142,7 +142,7 @@ One-click import of curated channel sets:
 #### D. Flexible Channel Insertion Modes
 Use the top dropdown to control how imported channels are placed into the 500-channel list:
 - **Append to first empty slot (Default):** Preserves all existing channels and fills available gaps.
-- **Insert at selected channel:** Shifts existing channels down to make room.
+- **Insert at selected channel:** Shifts existing channels down into the empty slots that follow. Existing channels are never pushed past channel 500; imported channels that do not fit are skipped and reported.
 - **Overwrite starting at selected channel:** Replaces channels consecutively starting at your chosen row.
 
 ---

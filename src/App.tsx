@@ -119,7 +119,7 @@ export const App: React.FC = () => {
     mode: ChannelInsertionMode,
     targetChannelNumber: number
   ) => {
-    const { channels: merged, importedCount } = mergeImportedChannels(
+    const { channels: merged, importedCount, skippedCount } = mergeImportedChannels(
       codeplug.channels,
       incoming,
       mode,
@@ -127,7 +127,11 @@ export const App: React.FC = () => {
     );
     handleUpdateChannels(merged);
     setActiveView('channels');
-    showToast(`Imported ${importedCount} channel(s) using "${mode}" strategy.`);
+    showToast(
+      skippedCount > 0
+        ? `Imported ${importedCount} of ${incoming.length} channel(s) using "${mode}" strategy; ${skippedCount} did not fit in the 500-channel list and were not imported.`
+        : `Imported ${importedCount} channel(s) using "${mode}" strategy.`
+    );
   };
 
   const handleQuickSaveYsf = () => {

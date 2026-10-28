@@ -353,15 +353,18 @@ export function exportChirpCsv(channels: ChannelRecord[]): string {
  * Merges incoming imported channels into the 500-channel array according to User Requirement #6:
  * - `append_empty` (Default): Places each incoming channel into the next available empty slot (`!used`).
  * - `insert_at`: Inserts incoming channels starting at `startChannelNumber` (`1..500`), shifting existing
- *   channels at or after `startChannelNumber` down.
+ *   channels at or after `startChannelNumber` down into the empty slots that follow. Existing channels
+ *   are never pushed past channel 500; incoming channels that do not fit are not imported.
  * - `overwrite_at`: Overwrites slots consecutively starting at `startChannelNumber` (`1..500`).
+ *
+ * `skippedCount` is the number of incoming channels that did not fit and were not imported.
  */
 export function mergeImportedChannels(
   existingChannels: ChannelRecord[],
   incomingChannels: ChannelRecord[],
   mode: ChannelInsertionMode = 'append_empty',
   startChannelNumber: number = 1
-): { channels: ChannelRecord[]; importedCount: number } {
+): { channels: ChannelRecord[]; importedCount: number; skippedCount: number } {
   const result = existingChannels.map((ch, idx) => ({
     ...ch,
     channelNumber: idx + 1,
@@ -400,12 +403,23 @@ export function mergeImportedChannels(
   } else if (mode === 'insert_at') {
     const prefix = result.slice(0, safeStartIdx);
     const suffix = result.slice(safeStartIdx);
-    const inserted = incomingChannels.map((inc) => ({
+    // Each inserted channel consumes the nearest empty slot after the insertion point, so
+    // existing channels only shift down as far as that gap and are never pushed past 500.
+    const room = suffix.filter((ch) => !ch.used).length;
+    const inserted = incomingChannels.slice(0, room).map((inc) => ({
       ...inc,
       used: true,
     }));
-    const combined = [...prefix, ...inserted, ...suffix].slice(0, MAX_CHANNELS);
-    importedCount = Math.min(incomingChannels.length, MAX_CHANNELS - safeStartIdx);
+    let emptiesToDrop = inserted.length;
+    const shifted = suffix.filter((ch) => {
+      if (!ch.used && emptiesToDrop > 0) {
+        emptiesToDrop--;
+        return false;
+      }
+      return true;
+    });
+    const combined = [...prefix, ...inserted, ...shifted];
+    importedCount = inserted.length;
     for (let i = 0; i < MAX_CHANNELS; i++) {
       result[i] = {
         ...(combined[i] ?? createEmptyChannel(i + 1)),
@@ -414,5 +428,5 @@ export function mergeImportedChannels(
     }
   }
 
-  return { channels: result, importedCount };
+  return { channels: result, importedCount, skippedCount: incomingChannels.length - importedCount };
 }
