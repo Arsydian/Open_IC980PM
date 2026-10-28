@@ -82,6 +82,32 @@ describe('writeRadioViaWebHid', () => {
   });
 });
 
+describe('verifying a write', () => {
+  const writeDefault = () =>
+    writeRadioViaWebHid((current) => ysfToEepromImage(encodeYsfBuffer(createDefaultCodeplug()), current));
+
+  it('reads back every written range after writing it', async () => {
+    const radio = new FakeHidRadio();
+    restoreGlobals.push(installFakeRadio(radio));
+    await writeDefault();
+
+    const lastWrite = radio.commands.map((c) => c.op).lastIndexOf('write');
+    const readsAfter = radio.commands.slice(lastWrite).filter((c) => c.op === 'read');
+    const covered = (addr: number) => readsAfter.some((r) => addr >= r.address! && addr < r.address! + r.length!);
+    for (const addr of radio.writtenAddresses()) {
+      expect(covered(addr)).toBe(true);
+    }
+    expect(radio.commands.at(-1)?.op).toBe('end');
+  });
+
+  it('fails when the radio holds different bytes than were written', async () => {
+    const radio = new FakeHidRadio({ corruptWriteAt: 0x2000 });
+    restoreGlobals.push(installFakeRadio(radio));
+    await expect(writeDefault()).rejects.toThrow(/^Verification failed at 0x02000 \(Channel Sector 2\/16\)/);
+    expect(radio.commands.at(-1)?.op).toBe('end');
+  });
+});
+
 describe('leaving programming mode after a failure', () => {
   const lastCommand = (radio: FakeHidRadio) => radio.commands.at(-1)?.op;
 

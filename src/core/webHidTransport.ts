@@ -367,7 +367,8 @@ async function readRadioSession(
  * 1. reads the radio's current EEPROM image,
  * 2. hands it to `prepareImage`, which is expected to save a rollback snapshot of it and return
  *    the EEPROM image to write; if it throws, the session ends before any byte is written,
- * 3. writes the returned image (`0x00000..0x1600F`).
+ * 3. writes the returned image (`0x00000..0x1600F`),
+ * 4. reads every written range back and throws if any byte differs.
  */
 export function writeRadioViaWebHid(
   prepareImage: (currentRadioImage: Uint8Array) => Promise<Uint8Array> | Uint8Array,
@@ -392,7 +393,7 @@ async function writeRadioSession(
       device,
       { checkPassword: false },
       onProgress,
-      [5, 45]
+      [5, 30]
     );
 
     const eeprom = await prepareImage(currentRadioImage);
@@ -415,39 +416,58 @@ async function writeRadioSession(
       }
     };
 
-    const sectors = getChannelSectorAddresses();
-    const totalSteps = EEPROM_READ_SEGMENTS.length + sectors.length + 1;
-    let stepIdx = 0;
+    // Everything this session writes: fixed segments, 16 channel sectors and the password block
+    const ranges: Array<{ label: string; start: number; length: number; chunk: number }> = [
+      ...EEPROM_READ_SEGMENTS.map((seg) => ({
+        label: seg.label,
+        start: seg.startAddress,
+        length: seg.endAddressInclusive - seg.startAddress + 1,
+        chunk: 128,
+      })),
+      ...getChannelSectorAddresses().map((sec) => ({
+        label: `Channel Sector ${sec.sectorIndex + 1}/16`,
+        start: sec.baseAddress,
+        length: sec.byteLength,
+        chunk: 136,
+      })),
+      { label: 'Programming Password', start: 0x16000, length: 16, chunk: 16 },
+    ];
 
-    for (const seg of EEPROM_READ_SEGMENTS) {
-      const len = seg.endAddressInclusive - seg.startAddress + 1;
-      stepIdx++;
+    for (const [idx, range] of ranges.entries()) {
       onProgress?.({
         phase: 'writing',
-        currentAddress: seg.startAddress,
-        totalBytes: totalSteps,
-        bytesTransferred: stepIdx,
-        percent: Math.round(50 + (stepIdx / totalSteps) * 48),
-        message: `Writing ${seg.label} (0x${seg.startAddress.toString(16).toUpperCase()})...`,
+        currentAddress: range.start,
+        totalBytes: ranges.length,
+        bytesTransferred: idx + 1,
+        percent: Math.round(30 + ((idx + 1) / ranges.length) * 35),
+        message: `Writing ${range.label} (0x${range.start.toString(16).toUpperCase()})...`,
       });
-      await writeRange(seg.startAddress, len, 128);
+      await writeRange(range.start, range.length, range.chunk);
     }
 
-    for (const sec of sectors) {
-      stepIdx++;
+    // Read every written range back and compare before leaving programming mode
+    const readBack = new Uint8Array(EEPROM_IMAGE_SIZE);
+    for (const [idx, range] of ranges.entries()) {
       onProgress?.({
-        phase: 'writing',
-        currentAddress: sec.baseAddress,
-        totalBytes: totalSteps,
-        bytesTransferred: stepIdx,
-        percent: Math.round(50 + (stepIdx / totalSteps) * 48),
-        message: `Writing Channel Sector ${sec.sectorIndex + 1}/16 (0x${sec.baseAddress.toString(16).toUpperCase()})...`,
+        phase: 'verifying',
+        currentAddress: range.start,
+        totalBytes: ranges.length,
+        bytesTransferred: idx + 1,
+        percent: Math.round(65 + ((idx + 1) / ranges.length) * 33),
+        message: `Verifying ${range.label} (0x${range.start.toString(16).toUpperCase()})...`,
       });
-      await writeRange(sec.baseAddress, sec.byteLength, 136);
+      await readMemoryRange(device, readBack, range.start, range.length, range.chunk);
+      for (let addr = range.start; addr < range.start + range.length; addr++) {
+        if (readBack[addr] !== eeprom[addr]) {
+          const hex = (n: number, width: number) => n.toString(16).toUpperCase().padStart(width, '0');
+          throw new Error(
+            `Verification failed at 0x${hex(addr, 5)} (${range.label}): the radio holds 0x${hex(readBack[addr], 2)} ` +
+              `but 0x${hex(eeprom[addr], 2)} was written. The radio may be partially programmed; write again, ` +
+              'or restore the pre-write snapshot from the Rollback Vault.'
+          );
+        }
+      }
     }
-
-    // Write password block at 0x16000..0x1600F
-    await writeRange(0x16000, 16, 16);
 
     await sendWebHidCmdGetResp(device, HID_CMD_END, 0);
     onProgress?.({

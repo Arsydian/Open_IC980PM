@@ -20,6 +20,8 @@ export interface FakeRadioOptions {
   echoAddressOverride?: number;
   /** Reject (NAK, `0x15`) a `'W'` block that starts at this address. */
   nakWriteAt?: number;
+  /** Acknowledge a `'W'` block at this address but store its first byte inverted. */
+  corruptWriteAt?: number;
 }
 
 export class FakeHidRadio {
@@ -107,6 +109,9 @@ export class FakeHidRadio {
         return;
       }
       this.memory.set(cmd.subarray(5, 5 + length), address);
+      if (this.options.corruptWriteAt === address) {
+        this.memory[address] ^= 0xff;
+      }
       this.reply(Uint8Array.of(0x06));
     }
   }
