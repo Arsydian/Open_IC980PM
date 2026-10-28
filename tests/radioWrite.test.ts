@@ -12,7 +12,7 @@ import {
 } from '../src/core/backupBundle';
 import { computeChannelEepromAddress, ysfToEepromImage } from '../src/core/eepromCodec';
 import { createDefaultCodeplug, decodeYsfBuffer, encodeYsfBuffer } from '../src/core/ysfCodec';
-import { writeRadioViaWebHid } from '../src/core/webHidTransport';
+import { flashBootLogoViaWebHid, readRadioViaWebHid, writeRadioViaWebHid } from '../src/core/webHidTransport';
 import type { RollbackSnapshot } from '../src/types/radio';
 import { FakeHidRadio, installFakeRadio } from './helpers/fakeHidRadio';
 
@@ -79,6 +79,33 @@ describe('writeRadioViaWebHid', () => {
 
     expect(radio.writtenAddresses()).toEqual([]);
     expect(radio.commands.at(-1)?.op).toBe('end');
+  });
+});
+
+describe('leaving programming mode after a failure', () => {
+  const lastCommand = (radio: FakeHidRadio) => radio.commands.at(-1)?.op;
+
+  it('sends E when a read fails part-way', async () => {
+    const radio = new FakeHidRadio({ echoAddressOverride: 0x000100 });
+    restoreGlobals.push(installFakeRadio(radio));
+    await expect(readRadioViaWebHid({ includeCalibration: false })).rejects.toThrow(/echo mismatch/);
+    expect(lastCommand(radio)).toBe('end');
+  });
+
+  it('sends E when the radio rejects a write block', async () => {
+    const radio = new FakeHidRadio({ nakWriteAt: 0x2000 });
+    restoreGlobals.push(installFakeRadio(radio));
+    await expect(
+      writeRadioViaWebHid((current) => ysfToEepromImage(encodeYsfBuffer(createDefaultCodeplug()), current))
+    ).rejects.toThrow(/Write rejected at 0x2000/);
+    expect(lastCommand(radio)).toBe('end');
+  });
+
+  it('sends E when a boot-logo flash fails', async () => {
+    const radio = new FakeHidRadio({ nakWriteAt: 0x1b000 });
+    restoreGlobals.push(installFakeRadio(radio));
+    await expect(flashBootLogoViaWebHid(new Uint8Array(400))).rejects.toThrow(/Boot logo flash failed/);
+    expect(lastCommand(radio)).toBe('end');
   });
 });
 

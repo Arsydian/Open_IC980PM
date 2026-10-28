@@ -18,6 +18,8 @@ export interface FakeRadioCommand {
 export interface FakeRadioOptions {
   /** Answer reads with this address instead of the requested one (simulates a misframed reply). */
   echoAddressOverride?: number;
+  /** Reject (NAK, `0x15`) a `'W'` block that starts at this address. */
+  nakWriteAt?: number;
 }
 
 export class FakeHidRadio {
@@ -100,6 +102,10 @@ export class FakeHidRadio {
       const address = (cmd[1] << 16) | (cmd[2] << 8) | cmd[3];
       const length = cmd[4];
       this.commands.push({ op: 'write', address, length });
+      if (this.options.nakWriteAt === address) {
+        this.reply(Uint8Array.of(0x15));
+        return;
+      }
       this.memory.set(cmd.subarray(5, 5 + length), address);
       this.reply(Uint8Array.of(0x06));
     }

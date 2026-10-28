@@ -159,6 +159,18 @@ async function sendWebHidCmdGetResp(
 }
 
 /**
+ * Best-effort `'E'` after a failed session so the radio does not stay in programming mode until
+ * it is power-cycled. Errors are ignored: the device may already be gone.
+ */
+async function exitProgrammingModeQuietly(device: WebHidDeviceLike): Promise<void> {
+  try {
+    await sendWebHidCmdGetResp(device, HID_CMD_END, 0, 1000);
+  } catch {
+    // Nothing more we can do; the caller reports the original error.
+  }
+}
+
+/**
  * Performs the `PROG81LS` handshake sequence (`0x0042A73C`).
  */
 async function performHandshake(
@@ -342,6 +354,9 @@ async function readRadioSession(
     });
 
     return { eeprom, calibration };
+  } catch (err) {
+    await exitProgrammingModeQuietly(device);
+    throw err;
   } finally {
     await device.close();
   }
@@ -380,16 +395,9 @@ async function writeRadioSession(
       [5, 45]
     );
 
-    let eeprom: Uint8Array;
-    try {
-      eeprom = await prepareImage(currentRadioImage);
-      if (eeprom.byteLength < 0x16010) {
-        throw new Error(`EEPROM image to write is too short (${eeprom.byteLength} bytes).`);
-      }
-    } catch (err) {
-      // Nothing has been written yet: leave programming mode and report why we stopped.
-      await sendWebHidCmdGetResp(device, HID_CMD_END, 0).catch(() => undefined);
-      throw err;
+    const eeprom = await prepareImage(currentRadioImage);
+    if (eeprom.byteLength < 0x16010) {
+      throw new Error(`EEPROM image to write is too short (${eeprom.byteLength} bytes).`);
     }
 
     const writeRange = async (startAddr: number, length: number, maxChunk: number = 128) => {
@@ -450,6 +458,9 @@ async function writeRadioSession(
       percent: 100,
       message: 'Radio EEPROM write complete! Radio is rebooting.',
     });
+  } catch (err) {
+    await exitProgrammingModeQuietly(device);
+    throw err;
   } finally {
     await device.close();
   }
@@ -510,6 +521,9 @@ async function flashBootLogoSession(
       percent: 100,
       message: 'Custom Boot Logo flashed to 0x1B000!',
     });
+  } catch (err) {
+    await exitProgrammingModeQuietly(device);
+    throw err;
   } finally {
     await device.close();
   }
