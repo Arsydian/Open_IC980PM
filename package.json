@@ -10,8 +10,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "electron:compile": "tsc -p tsconfig.electron.json",
-    "electron:dev": "npm run electron:compile && electron .",
+    "electron:compile": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
+    "electron:dev": "npm run build && npm run electron:compile && electron .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

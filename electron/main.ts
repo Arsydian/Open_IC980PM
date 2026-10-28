@@ -79,7 +79,8 @@ function createWindow(): void {
     title: `Open_IC980PM v${APP_VERSION}`,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      // Sandboxed preloads cannot use ESM imports, so the preload is compiled to CommonJS.
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

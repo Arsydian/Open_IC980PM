@@ -1,6 +1,7 @@
 /**
- * @file electron/preload.ts
+ * @file electron/preload.cts
  * @description Context-isolated Electron Preload script exposing `window.api` to the React UI.
+ * Compiled to CommonJS (`preload.cjs`) because sandboxed preloads cannot use ESM imports.
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
