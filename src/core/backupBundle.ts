@@ -9,6 +9,7 @@
 
 import type { RadioCodeplug, RollbackSnapshot } from '../types/radio';
 import { YSF_FILE_SIZE } from './constants';
+import { eepromImageToYsf } from './eepromCodec';
 import { decodeYsfBuffer, encodeYsfBuffer } from './ysfCodec';
 
 const LOCAL_STORAGE_VAULT_KEY = 'open_ic980pm_rollback_vault_v1';
@@ -137,6 +138,17 @@ export function createSnapshotFromCodeplug(
 }
 
 /**
+ * Creates a `RollbackSnapshot` of what is actually stored on the radio, from an EEPROM image
+ * read just before writing. Fields the radio does not store come from factory defaults.
+ */
+export function createSnapshotFromRadioImage(
+  radioEeprom: Uint8Array,
+  label: string = 'Radio contents before write'
+): RollbackSnapshot {
+  return createSnapshotFromCodeplug(decodeYsfBuffer(eepromImageToYsf(radioEeprom)), label);
+}
+
+/**
  * Loads all snapshots from the Rollback Vault (Electron IPC or browser `localStorage`).
  */
 export async function loadRollbackVault(): Promise<RollbackSnapshot[]> {
@@ -155,18 +167,27 @@ export async function loadRollbackVault(): Promise<RollbackSnapshot[]> {
 
 /**
  * Saves a snapshot to the Rollback Vault (Electron IPC or browser `localStorage`).
+ *
+ * @throws if the snapshot could not be stored (e.g. browser storage quota exceeded), so callers
+ *   such as the pre-write backup can stop instead of assuming it was saved
  */
 export async function saveSnapshotToVault(snapshot: RollbackSnapshot): Promise<RollbackSnapshot[]> {
+  let updated: RollbackSnapshot[];
   if (typeof window !== 'undefined' && window.api?.saveRollbackSnapshot) {
     await window.api.saveRollbackSnapshot(snapshot);
-    return window.api.listRollbackSnapshots();
+    updated = await window.api.listRollbackSnapshots();
+  } else {
+    const existing = await loadRollbackVault();
+    updated = [snapshot, ...existing.filter((s) => s.id !== snapshot.id)].slice(0, 40);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_VAULT_KEY, JSON.stringify(updated));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(`Could not save snapshot to the Rollback Vault (browser storage): ${reason}`);
+    }
   }
-  const existing = await loadRollbackVault();
-  const updated = [snapshot, ...existing.filter((s) => s.id !== snapshot.id)].slice(0, 40);
-  try {
-    localStorage.setItem(LOCAL_STORAGE_VAULT_KEY, JSON.stringify(updated));
-  } catch {
-    // Ignore storage quota errors
+  if (!updated.some((s) => s.id === snapshot.id)) {
+    throw new Error('Could not save snapshot to the Rollback Vault: it was not stored.');
   }
   return updated;
 }

@@ -192,6 +192,89 @@ async function readMemoryRange(
 }
 
 /**
+ * Reads the password block, fixed segments, channel sectors and (optionally) the RF calibration
+ * block into a fresh EEPROM image. The `PROG81LS` handshake must already have been performed.
+ * Progress percentages are spread across `[startPercent, endPercent]`.
+ */
+async function readEepromImage(
+  device: WebHidDeviceLike,
+  options: { includeCalibration?: boolean; password?: string; checkPassword: boolean },
+  onProgress: ((ev: HidProgressEvent) => void) | undefined,
+  [startPercent, endPercent]: [number, number]
+): Promise<{ eeprom: Uint8Array; calibration?: Uint8Array }> {
+  const eeprom = new Uint8Array(EEPROM_IMAGE_SIZE);
+  eeprom.fill(0xff);
+  const percentAt = (fraction: number) => Math.round(startPercent + fraction * (endPercent - startPercent));
+
+  // 1. Read (and optionally check) the password at 0x16000 (16 bytes)
+  onProgress?.({
+    phase: 'password',
+    currentAddress: 0x16000,
+    totalBytes: 100,
+    bytesTransferred: 0,
+    percent: percentAt(0),
+    message: 'Verifying radio programming password at 0x16000...',
+  });
+  await readMemoryRange(device, eeprom, 0x16000, 16, 16);
+  if (options.checkPassword) {
+    const radioPassword = decryptRadioPassword(eeprom.subarray(0x16000, 0x16010));
+    if (radioPassword && radioPassword !== (options.password || '').trim()) {
+      throw new Error('Radio is password-protected. Please enter the 6-digit programming password.');
+    }
+  }
+
+  // 2. Read fixed segments (Bitmask, VFO, General, DTMF)
+  let stepIdx = 0;
+  const sectors = getChannelSectorAddresses();
+  const totalSteps = EEPROM_READ_SEGMENTS.length + sectors.length + (options.includeCalibration ? 1 : 0);
+
+  for (const seg of EEPROM_READ_SEGMENTS) {
+    const len = seg.endAddressInclusive - seg.startAddress + 1;
+    stepIdx++;
+    onProgress?.({
+      phase: 'reading',
+      currentAddress: seg.startAddress,
+      totalBytes: totalSteps,
+      bytesTransferred: stepIdx,
+      percent: percentAt(stepIdx / totalSteps),
+      message: `Reading ${seg.label} (0x${seg.startAddress.toString(16).toUpperCase()})...`,
+    });
+    await readMemoryRange(device, eeprom, seg.startAddress, len, 128);
+  }
+
+  // 3. Read 16 Channel Sectors (0x01000..0x1043F)
+  for (const sec of sectors) {
+    stepIdx++;
+    onProgress?.({
+      phase: 'reading',
+      currentAddress: sec.baseAddress,
+      totalBytes: totalSteps,
+      bytesTransferred: stepIdx,
+      percent: percentAt(stepIdx / totalSteps),
+      message: `Reading Channel Sector ${sec.sectorIndex + 1}/16 (0x${sec.baseAddress.toString(16).toUpperCase()})...`,
+    });
+    await readMemoryRange(device, eeprom, sec.baseAddress, sec.byteLength, 136);
+  }
+
+  // 4. Optional RF Calibration read (0x18000..0x18306)
+  let calibration: Uint8Array | undefined;
+  if (options.includeCalibration) {
+    onProgress?.({
+      phase: 'calibration',
+      currentAddress: 0x18000,
+      totalBytes: totalSteps,
+      bytesTransferred: totalSteps,
+      percent: percentAt(1),
+      message: 'Reading RF Calibration block (0x18000..0x18306)...',
+    });
+    await readMemoryRange(device, eeprom, 0x18000, RF_CALIBRATION_SIZE, 128);
+    calibration = eeprom.subarray(0x18000, 0x18000 + RF_CALIBRATION_SIZE).slice();
+  }
+
+  return { eeprom, calibration };
+}
+
+/**
  * Reads the complete EEPROM image (`0x00000..0x18306`) from the radio via WebHID.
  */
 export async function readRadioViaWebHid(
@@ -206,73 +289,14 @@ export async function readRadioViaWebHid(
   try {
     await performHandshake(device, onProgress);
 
-    const eeprom = new Uint8Array(EEPROM_IMAGE_SIZE);
-    eeprom.fill(0xff);
+    const { eeprom, calibration } = await readEepromImage(
+      device,
+      { ...options, checkPassword: true },
+      onProgress,
+      [10, 98]
+    );
 
-    // 1. Check password at 0x16000 (16 bytes)
-    onProgress?.({
-      phase: 'password',
-      currentAddress: 0x16000,
-      totalBytes: 100,
-      bytesTransferred: 10,
-      percent: 10,
-      message: 'Verifying radio programming password at 0x16000...',
-    });
-    await readMemoryRange(device, eeprom, 0x16000, 16, 16);
-    const radioPassword = decryptRadioPassword(eeprom.subarray(0x16000, 0x16010));
-    if (radioPassword && radioPassword !== (options.password || '').trim()) {
-      throw new Error('Radio is password-protected. Please enter the 6-digit programming password.');
-    }
-
-    // 2. Read fixed segments (Bitmask, VFO, General, DTMF)
-    let stepIdx = 0;
-    const sectors = getChannelSectorAddresses();
-    const totalSteps = EEPROM_READ_SEGMENTS.length + sectors.length + (options.includeCalibration ? 1 : 0);
-
-    for (const seg of EEPROM_READ_SEGMENTS) {
-      const len = seg.endAddressInclusive - seg.startAddress + 1;
-      stepIdx++;
-      onProgress?.({
-        phase: 'reading',
-        currentAddress: seg.startAddress,
-        totalBytes: totalSteps,
-        bytesTransferred: stepIdx,
-        percent: Math.round((stepIdx / totalSteps) * 90),
-        message: `Reading ${seg.label} (0x${seg.startAddress.toString(16).toUpperCase()})...`,
-      });
-      await readMemoryRange(device, eeprom, seg.startAddress, len, 128);
-    }
-
-    // 3. Read 16 Channel Sectors (0x01000..0x1043F)
-    for (const sec of sectors) {
-      stepIdx++;
-      onProgress?.({
-        phase: 'reading',
-        currentAddress: sec.baseAddress,
-        totalBytes: totalSteps,
-        bytesTransferred: stepIdx,
-        percent: Math.round((stepIdx / totalSteps) * 95),
-        message: `Reading Channel Sector ${sec.sectorIndex + 1}/16 (0x${sec.baseAddress.toString(16).toUpperCase()})...`,
-      });
-      await readMemoryRange(device, eeprom, sec.baseAddress, sec.byteLength, 136);
-    }
-
-    // 4. Optional RF Calibration read (0x18000..0x18306)
-    let calibration: Uint8Array | undefined;
-    if (options.includeCalibration) {
-      onProgress?.({
-        phase: 'calibration',
-        currentAddress: 0x18000,
-        totalBytes: totalSteps,
-        bytesTransferred: totalSteps,
-        percent: 98,
-        message: 'Reading RF Calibration block (0x18000..0x18306)...',
-      });
-      await readMemoryRange(device, eeprom, 0x18000, RF_CALIBRATION_SIZE, 128);
-      calibration = eeprom.subarray(0x18000, 0x18000 + RF_CALIBRATION_SIZE).slice();
-    }
-
-    // 5. Exit programming mode
+    // Exit programming mode
     await sendWebHidCmdGetResp(device, HID_CMD_END, 0);
     onProgress?.({
       phase: 'complete',
@@ -290,10 +314,14 @@ export async function readRadioViaWebHid(
 }
 
 /**
- * Writes an EEPROM image (`0x00000..0x1600F`) to the radio via WebHID.
+ * Writes a codeplug to the radio via WebHID in one programming session:
+ * 1. reads the radio's current EEPROM image,
+ * 2. hands it to `prepareImage`, which is expected to save a rollback snapshot of it and return
+ *    the EEPROM image to write; if it throws, the session ends before any byte is written,
+ * 3. writes the returned image (`0x00000..0x1600F`).
  */
 export async function writeRadioViaWebHid(
-  eeprom: Uint8Array,
+  prepareImage: (currentRadioImage: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<void> {
   const device = await requestWebHidDevice();
@@ -301,23 +329,42 @@ export async function writeRadioViaWebHid(
     await device.open();
   }
 
-  const writeRange = async (startAddr: number, length: number, maxChunk: number = 128) => {
-    let offset = 0;
-    while (offset < length) {
-      const chunkLen = Math.min(maxChunk, length - offset);
-      const addr = startAddr + offset;
-      const slice = eeprom.subarray(addr, addr + chunkLen);
-      const cmd = buildWriteMemoryCommand(addr, slice);
-      const ack = await sendWebHidCmdGetResp(device, cmd, 1);
-      if (ack[0] !== 0x06) {
-        throw new Error(`Write rejected at 0x${addr.toString(16)}: 0x${ack[0]?.toString(16)}`);
-      }
-      offset += chunkLen;
-    }
-  };
-
   try {
     await performHandshake(device, onProgress);
+
+    const { eeprom: currentRadioImage } = await readEepromImage(
+      device,
+      { checkPassword: false },
+      onProgress,
+      [5, 45]
+    );
+
+    let eeprom: Uint8Array;
+    try {
+      eeprom = await prepareImage(currentRadioImage);
+      if (eeprom.byteLength < 0x16010) {
+        throw new Error(`EEPROM image to write is too short (${eeprom.byteLength} bytes).`);
+      }
+    } catch (err) {
+      // Nothing has been written yet: leave programming mode and report why we stopped.
+      await sendWebHidCmdGetResp(device, HID_CMD_END, 0).catch(() => undefined);
+      throw err;
+    }
+
+    const writeRange = async (startAddr: number, length: number, maxChunk: number = 128) => {
+      let offset = 0;
+      while (offset < length) {
+        const chunkLen = Math.min(maxChunk, length - offset);
+        const addr = startAddr + offset;
+        const slice = eeprom.subarray(addr, addr + chunkLen);
+        const cmd = buildWriteMemoryCommand(addr, slice);
+        const ack = await sendWebHidCmdGetResp(device, cmd, 1);
+        if (ack[0] !== 0x06) {
+          throw new Error(`Write rejected at 0x${addr.toString(16)}: 0x${ack[0]?.toString(16)}`);
+        }
+        offset += chunkLen;
+      }
+    };
 
     const sectors = getChannelSectorAddresses();
     const totalSteps = EEPROM_READ_SEGMENTS.length + sectors.length + 1;
@@ -331,7 +378,7 @@ export async function writeRadioViaWebHid(
         currentAddress: seg.startAddress,
         totalBytes: totalSteps,
         bytesTransferred: stepIdx,
-        percent: Math.round((stepIdx / totalSteps) * 90),
+        percent: Math.round(50 + (stepIdx / totalSteps) * 48),
         message: `Writing ${seg.label} (0x${seg.startAddress.toString(16).toUpperCase()})...`,
       });
       await writeRange(seg.startAddress, len, 128);
@@ -344,7 +391,7 @@ export async function writeRadioViaWebHid(
         currentAddress: sec.baseAddress,
         totalBytes: totalSteps,
         bytesTransferred: stepIdx,
-        percent: Math.round((stepIdx / totalSteps) * 95),
+        percent: Math.round(50 + (stepIdx / totalSteps) * 48),
         message: `Writing Channel Sector ${sec.sectorIndex + 1}/16 (0x${sec.baseAddress.toString(16).toUpperCase()})...`,
       });
       await writeRange(sec.baseAddress, sec.byteLength, 136);

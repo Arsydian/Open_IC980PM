@@ -118,8 +118,13 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
 
   const handleCreateVaultSnapshot = async () => {
     const snap = createSnapshotFromCodeplug(codeplug, customLabel.trim() || 'Manual Snapshot');
-    const updated = await saveSnapshotToVault(snap);
-    setSnapshots(updated);
+    try {
+      const updated = await saveSnapshotToVault(snap);
+      setSnapshots(updated);
+      setErrorMsg(null);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save snapshot.');
+    }
   };
 
   const handleRestoreVaultSnapshot = (snap: RollbackSnapshot) => {

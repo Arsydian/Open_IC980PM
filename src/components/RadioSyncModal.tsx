@@ -20,7 +20,7 @@ import type { RadioCodeplug } from '../types/radio';
 import { decodeYsfBuffer, encodeYsfBuffer } from '../core/ysfCodec';
 import { eepromImageToYsf, ysfToEepromImage } from '../core/eepromCodec';
 import {
-  createSnapshotFromCodeplug,
+  createSnapshotFromRadioImage,
   saveSnapshotToVault,
   uint8ArrayToBase64,
 } from '../core/backupBundle';
@@ -72,19 +72,19 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
         onCodeplugReadFromRadio(decoded);
         setCompletedMsg('Successfully read configuration from HIROYASU IC-980 Pro Max!');
       } else {
-        // 1. Automatically create a Pre-Write Safety Snapshot in the Rollback Vault
-        const snap = createSnapshotFromCodeplug(
-          codeplug,
-          `Pre-Write Safety Snapshot (${new Date().toLocaleTimeString()})`
-        );
-        await saveSnapshotToVault(snap);
+        await writeRadioViaWebHid(async (currentRadioImage) => {
+          // 1. Back up what is on the radio right now; abort before writing if that fails
+          const snap = createSnapshotFromRadioImage(
+            currentRadioImage,
+            `Radio before write (${new Date().toLocaleTimeString()})`
+          );
+          await saveSnapshotToVault(snap);
 
-        // 2. Encode .Ysf -> EEPROM Image and write over USB HID
-        const ysfBuf = encodeYsfBuffer(codeplug);
-        const eepromImg = ysfToEepromImage(ysfBuf);
-        await writeRadioViaWebHid(eepromImg, (ev) => setProgress(ev));
+          // 2. Encode .Ysf -> EEPROM Image to write over USB HID
+          return ysfToEepromImage(encodeYsfBuffer(codeplug));
+        }, (ev) => setProgress(ev));
         setCompletedMsg(
-          'Successfully wrote codeplug to HIROYASU IC-980 Pro Max! Pre-write safety snapshot saved to Rollback Vault.'
+          'Successfully wrote codeplug to HIROYASU IC-980 Pro Max! The radio’s previous contents were saved to the Rollback Vault.'
         );
       }
     } catch (err) {
@@ -130,7 +130,7 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
               <li>Turn the radio power switch ON and ensure it is idle on VFO/Memory screen (not transmitting).</li>
               <li>
                 {mode === 'write'
-                  ? 'An automatic Rollback Vault snapshot will be saved before writing.'
+                  ? 'The radio is read first and its current contents saved to the Rollback Vault; if that backup fails, nothing is written.'
                   : 'Select whether to also back up the 775-byte RF Calibration region (0x18000).'}
               </li>
             </ol>
