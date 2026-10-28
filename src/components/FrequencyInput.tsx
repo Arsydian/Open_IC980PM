@@ -12,6 +12,8 @@ interface FrequencyInputProps {
   valueHz: number;
   /** Called after editing with a valid frequency that differs from `valueHz`. */
   onCommit: (hz: number) => void;
+  /** Called after editing when the text is not a positive frequency; the field reverts. */
+  onInvalid?: (text: string) => void;
   className?: string;
   placeholder?: string;
   ariaLabel?: string;
@@ -20,6 +22,7 @@ interface FrequencyInputProps {
 export const FrequencyInput: React.FC<FrequencyInputProps> = ({
   valueHz,
   onCommit,
+  onInvalid,
   className,
   placeholder = '—',
   ariaLabel,
@@ -37,7 +40,9 @@ export const FrequencyInput: React.FC<FrequencyInputProps> = ({
       return;
     }
     const hz = parseMhzInput(text);
-    if (hz !== null && hz !== valueHz) {
+    if (hz === null) {
+      if (text.trim() !== '') onInvalid?.(text);
+    } else if (hz !== valueHz) {
       onCommit(hz);
     }
   };

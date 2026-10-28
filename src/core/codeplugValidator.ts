@@ -19,6 +19,28 @@ const BAND_LIMIT_MIN_MHZ = 18.0;
 const BAND_LIMIT_MAX_MHZ = 999.0;
 
 /**
+ * Applies one band-limit edit if the result is representable and ordered (min below max),
+ * otherwise returns why it was refused so the editor can keep the previous value.
+ */
+export function applyBandLimitEdit(
+  limits: BandLimitsConfig,
+  field: keyof BandLimitsConfig,
+  mhz: number
+): { limits: BandLimitsConfig } | { error: string } {
+  if (!Number.isFinite(mhz) || mhz < BAND_LIMIT_MIN_MHZ || mhz > BAND_LIMIT_MAX_MHZ) {
+    return { error: `Band limits must be between ${BAND_LIMIT_MIN_MHZ} and ${BAND_LIMIT_MAX_MHZ} MHz.` };
+  }
+  const next = { ...limits, [field]: mhz };
+  if (next.vhfMinMhz >= next.vhfMaxMhz) {
+    return { error: `VHF minimum (${next.vhfMinMhz} MHz) must be below VHF maximum (${next.vhfMaxMhz} MHz).` };
+  }
+  if (next.uhfMinMhz >= next.uhfMaxMhz) {
+    return { error: `UHF minimum (${next.uhfMinMhz} MHz) must be below UHF maximum (${next.uhfMaxMhz} MHz).` };
+  }
+  return { limits: next };
+}
+
+/**
  * Checks whether a frequency in Hz falls within the configured VHF or UHF band limits.
  * Non-positive frequencies (empty fields) are treated as in band.
  */

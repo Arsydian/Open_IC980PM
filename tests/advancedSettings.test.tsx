@@ -68,6 +68,57 @@ describe('settings that are not written to the radio', () => {
   });
 });
 
+describe('cross-band preset tones', () => {
+  it('replaces a CTCSS value with a valid DCS code when the type switches to DCS', () => {
+    const state = renderAdvanced();
+    const toneType = screen.getByLabelText('Slot 1 band A tone type');
+
+    fireEvent.change(toneType, { target: { value: 'CTCSS' } });
+    expect(state.current.crossBandSlots[0]).toMatchObject({ toneAType: 'CTCSS', toneAValue: 67.0 }); // still valid
+
+    fireEvent.change(toneType, { target: { value: 'DCS_N' } });
+    expect(state.current.crossBandSlots[0]).toMatchObject({ toneAType: 'DCS_N', toneAValue: 23 });
+
+    fireEvent.change(screen.getByLabelText('Slot 1 band B tone type'), { target: { value: 'DCS_I' } });
+    expect(state.current.crossBandSlots[0]).toMatchObject({ toneBType: 'DCS_I', toneBValue: 23 });
+  });
+});
+
+describe('band limit fields', () => {
+  const edit = (label: string, text: string) => {
+    const input = screen.getByLabelText(label);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.blur(input);
+  };
+
+  it('refuses negative values and a minimum above the maximum, keeping the old limit', () => {
+    const state = renderAdvanced();
+    fireEvent.click(screen.getByRole('button', { name: /Band Unlock/ }));
+
+    edit('VHF minimum (MHz)', '-136');
+    expect(state.current.bandLimits.vhfMinMhz).toBe(136);
+    expect(screen.getByRole('alert').textContent).toContain('"-136" is not a frequency in MHz.');
+
+    edit('VHF minimum (MHz)', '180');
+    expect(state.current.bandLimits.vhfMinMhz).toBe(136);
+    expect(screen.getByRole('alert').textContent).toContain('VHF minimum (180 MHz) must be below VHF maximum');
+
+    edit('UHF maximum (MHz)', '520');
+    expect(state.current.bandLimits.uhfMaxMhz).toBe(520);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not commit a half-typed value', () => {
+    const state = renderAdvanced();
+    fireEvent.click(screen.getByRole('button', { name: /Band Unlock/ }));
+    const input = screen.getByLabelText('VHF maximum (MHz)');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '1' } });
+    expect(state.current.bandLimits.vhfMaxMhz).toBe(174);
+  });
+});
+
 describe('DTMF address book contacts', () => {
   it('limits name and code to what fits in the 16-byte slot', () => {
     const state = renderAdvanced();

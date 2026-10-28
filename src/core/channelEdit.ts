@@ -3,7 +3,19 @@
  * @description Parsing and apply rules for frequencies typed into the channel grid.
  */
 
-import type { ChannelRecord } from '../types/radio';
+import type { ChannelRecord, ToneType } from '../types/radio';
+import { CTCSS_TONES, DCS_CODES } from './constants';
+
+/**
+ * Tone value to keep after switching a tone selector to `type`: the current value if it is valid
+ * for the new type, otherwise a standard default (CTCSS 100.0 Hz, DCS 023). Without this, a
+ * CTCSS 88.5 left in place after switching to DCS is written as the invalid code "D089".
+ */
+export function toneValueForType(type: ToneType, current: number): number {
+  if (type === 'CTCSS') return CTCSS_TONES.includes(current) ? current : CTCSS_TONES[12];
+  if (type === 'DCS_N' || type === 'DCS_I') return DCS_CODES.includes(current) ? current : DCS_CODES[0];
+  return current;
+}
 
 /**
  * Parses a frequency typed in MHz (e.g. `"146.52"`) into Hz.
