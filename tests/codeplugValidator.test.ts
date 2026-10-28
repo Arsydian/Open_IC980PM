@@ -45,6 +45,19 @@ describe('validateCodeplugForWrite', () => {
     ).toEqual([]);
   });
 
+  it('blocks custom subaudio values the radio cannot store', () => {
+    const custom = (rx: string, tx: string) =>
+      validateCodeplugForWrite(
+        withChannel1({ customSubaudioEnabled: true, customRxSubaudioHex: rx, customTxSubaudioHex: tx })
+      ).map((i) => i.message);
+
+    expect(custom('0000FFFF', 'ABCD')).toEqual([]);
+    expect(custom('12345678', '0000ABCD')).toEqual([
+      "Custom RX subaudio 12345678 does not fit the radio's 16-bit field (0000–FFFF); only the last 4 hex digits would be stored.",
+    ]);
+    expect(custom('0000ABCD', '')).toEqual(['Custom TX subaudio "" is not a hex value.']);
+  });
+
   it('blocks inverted or unrepresentable band limits', () => {
     const inverted = createDefaultCodeplug();
     inverted.bandLimits.vhfMinMhz = 180;

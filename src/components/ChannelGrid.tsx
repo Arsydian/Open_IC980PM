@@ -942,6 +942,9 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
                         className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 font-mono text-amber-300"
                       />
                     </div>
+                    <span className="text-slate-500">
+                      The radio stores 4 hex digits per direction (0000–FFFF); the .Ysf file keeps all 8.
+                    </span>
                   </>
                 )}
               </div>

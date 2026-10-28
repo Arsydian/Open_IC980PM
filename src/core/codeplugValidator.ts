@@ -45,6 +45,19 @@ function toneProblem(type: ToneType, value: number): string | null {
   return null;
 }
 
+/** Largest custom subaudio value the radio's 16-bit channel tone word can hold. */
+export const MAX_RADIO_CUSTOM_SUBAUDIO = 0xffff;
+
+function customSubaudioProblem(hex: string): string | null {
+  if (!/^[0-9A-Fa-f]{1,8}$/.test(hex)) {
+    return `"${hex}" is not a hex value.`;
+  }
+  if (parseInt(hex, 16) > MAX_RADIO_CUSTOM_SUBAUDIO) {
+    return `${hex.toUpperCase()} does not fit the radio's 16-bit field (0000–FFFF); only the last 4 hex digits would be stored.`;
+  }
+  return null;
+}
+
 /**
  * Lists everything that must be fixed before `codeplug` is written to the radio.
  * An empty array means the codeplug may be written.
@@ -83,7 +96,12 @@ export function validateCodeplugForWrite(codeplug: RadioCodeplug): CodeplugIssue
         issues.push({ location, message: `${label} ${formatMhz(hz)} is outside the band limits (${describeLimits(limits)}).` });
       }
     }
-    if (!ch.customSubaudioEnabled) {
+    if (ch.customSubaudioEnabled) {
+      for (const [label, hex] of [['RX', ch.customRxSubaudioHex], ['TX', ch.customTxSubaudioHex]] as const) {
+        const problem = customSubaudioProblem(hex);
+        if (problem) issues.push({ location, message: `Custom ${label} subaudio ${problem}` });
+      }
+    } else {
       const rx = toneProblem(ch.rxToneType, ch.rxToneValue);
       const tx = toneProblem(ch.txToneType, ch.txToneValue);
       if (rx) issues.push({ location, message: `RX tone: ${rx}.` });
