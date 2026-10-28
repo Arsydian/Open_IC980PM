@@ -22,7 +22,6 @@ import {
   CloudLightning,
 } from 'lucide-react';
 import type {
-  BandLimitsConfig,
   Bandwidth,
   ChannelRecord,
   ModulationMode,
@@ -35,6 +34,7 @@ import { CTCSS_TONES, DCS_CODES, MAX_CHANNELS, YSF_OFFSETS } from '../core/const
 import { createEmptyChannel, getChannelRawYsfBytes } from '../core/ysfCodec';
 import { computeChannelEepromAddress, extractChannelEeprom34Bytes } from '../core/eepromCodec';
 import { exportChirpCsv } from '../core/chirpCsvCodec';
+import { isFrequencyInBand } from '../core/codeplugValidator';
 
 interface ChannelGridProps {
   codeplug: RadioCodeplug;
@@ -59,17 +59,6 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
   const [showHexInspector, setShowHexInspector] = useState(false);
 
   const { channels, bandLimits } = codeplug;
-
-  /**
-   * Checks whether a frequency in Hz falls within the configured VHF or UHF band limits.
-   */
-  const isFrequencyInBand = (freqHz: number, limits: BandLimitsConfig): boolean => {
-    if (freqHz <= 0) return true;
-    const mhz = freqHz / 1_000_000;
-    const inVhf = mhz >= limits.vhfMinMhz - 0.0001 && mhz <= limits.vhfMaxMhz + 0.0001;
-    const inUhf = mhz >= limits.uhfMinMhz - 0.0001 && mhz <= limits.uhfMaxMhz + 0.0001;
-    return inVhf || inUhf;
-  };
 
   const filteredChannels = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

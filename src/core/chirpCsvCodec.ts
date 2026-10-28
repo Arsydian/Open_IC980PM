@@ -9,6 +9,15 @@ import { CTCSS_TONES, DCS_CODES, MAX_CHANNELS } from './constants';
 import { createEmptyChannel } from './ysfCodec';
 
 /**
+ * CHIRP modes the IC-980 Pro Max cannot use (digital voice, SSB/CW/data, broadcast FM).
+ * Rows in these modes are skipped instead of being imported as analog FM.
+ */
+const UNSUPPORTED_CHIRP_MODES: ReadonlySet<string> = new Set([
+  'DV', 'DMR', 'DN', 'P25', 'NXDN', 'DIG', 'PKT', 'USB', 'LSB',
+  'CW', 'CWR', 'NCW', 'NCWR', 'RTTY', 'RTTYR', 'FSK', 'FSKR', 'WFM',
+]);
+
+/**
  * Splits a single CSV line into fields while respecting double-quoted strings and escaped quotes.
  */
 function splitCsvLine(line: string): string[] {
@@ -189,8 +198,12 @@ export function parseChirpOrCpsCsv(csvText: string): ChannelRecord[] {
 
     // Mode & Bandwidth
     const modeStr = idxMode !== -1 ? (cols[idxMode] || 'FM').trim().toUpperCase() : 'FM';
-    const modulation: ModulationMode = modeStr === 'AM' ? 'AM' : 'FM';
-    const bandwidth: Bandwidth = modeStr === 'NFM' || modeStr === 'NARROW' ? 'Narrow' : 'Wide';
+    if (UNSUPPORTED_CHIRP_MODES.has(modeStr)) {
+      continue;
+    }
+    const modulation: ModulationMode = modeStr === 'AM' || modeStr === 'NAM' ? 'AM' : 'FM';
+    const bandwidth: Bandwidth =
+      modeStr === 'NFM' || modeStr === 'NAM' || modeStr === 'NARROW' ? 'Narrow' : 'Wide';
 
     // Power
     const powerStr = idxPower !== -1 ? (cols[idxPower] || 'High').trim().toLowerCase() : 'high';

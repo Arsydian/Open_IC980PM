@@ -2,10 +2,11 @@
  * @file src/components/RadioSyncModal.tsx
  * @description Direct USB HID / WebHID Read & Write modal for the HIROYASU IC-980 Pro Max
  * (`VendorName: "ASER _HID"`, `ProductName: "ASER-471"`, `PROG81LS` handshake).
- * Automatically captures a Pre-Write EEPROM Safety Snapshot to the Rollback Vault before writing.
+ * Before writing, blocks codeplugs that fail `validateCodeplugForWrite` and backs up the radio's
+ * current contents to the Rollback Vault.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Download,
@@ -28,6 +29,10 @@ import {
   readRadioViaWebHid,
   writeRadioViaWebHid,
 } from '../core/webHidTransport';
+import { validateCodeplugForWrite } from '../core/codeplugValidator';
+
+/** How many pre-write problems to list before summarizing the rest. */
+const MAX_LISTED_ISSUES = 8;
 
 interface RadioSyncModalProps {
   isOpen: boolean;
@@ -51,9 +56,16 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [completedMsg, setCompletedMsg] = useState<string | null>(null);
 
+  const writeIssues = useMemo(
+    () => (isOpen && mode === 'write' ? validateCodeplugForWrite(codeplug) : []),
+    [isOpen, mode, codeplug]
+  );
+  const writeBlocked = mode === 'write' && writeIssues.length > 0;
+
   if (!isOpen) return null;
 
   const handleStartTransfer = async () => {
+    if (writeBlocked) return;
     setIsRunning(true);
     setErrorMsg(null);
     setCompletedMsg(null);
@@ -136,6 +148,28 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
             </ol>
           </div>
 
+          {writeBlocked && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2 text-rose-200">
+              <div className="flex items-start gap-2.5 font-semibold">
+                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>
+                  Fix {writeIssues.length === 1 ? 'this problem' : `these ${writeIssues.length} problems`} before
+                  writing. Nothing will be sent to the radio until they are resolved.
+                </span>
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-rose-200/90">
+                {writeIssues.slice(0, MAX_LISTED_ISSUES).map((issue, idx) => (
+                  <li key={idx}>
+                    <span className="font-semibold">{issue.location}:</span> {issue.message}
+                  </li>
+                ))}
+              </ul>
+              {writeIssues.length > MAX_LISTED_ISSUES && (
+                <div className="text-rose-300/80">…and {writeIssues.length - MAX_LISTED_ISSUES} more.</div>
+              )}
+            </div>
+          )}
+
           {mode === 'read' && (
             <div className="space-y-3">
               <label className="flex items-center gap-2 cursor-pointer text-slate-200">
@@ -206,7 +240,7 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
 
             <button
               type="button"
-              disabled={isRunning}
+              disabled={isRunning || writeBlocked}
               onClick={handleStartTransfer}
               className="inline-flex items-center gap-2 px-5 py-2 rounded-xl font-bold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-md disabled:opacity-50"
             >
