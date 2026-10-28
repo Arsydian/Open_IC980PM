@@ -16,6 +16,7 @@ import {
   buildHidOutputReports,
   buildReadMemoryCommand,
   buildWriteMemoryCommand,
+  decodeHidInputReport,
   getChannelSectorAddresses,
 } from './hidProtocol';
 import { decryptRadioPassword } from './passwordCipher';
@@ -84,16 +85,16 @@ async function sendWebHidCmdGetResp(
       const bytes = new Uint8Array(ev.data.buffer, ev.data.byteOffset, ev.data.byteLength);
       if (bytes.length === 0) return;
 
-      const count = bytes[0];
-      if (bytes[1] === 0x4d && count >= 2) {
-        // Multi-report continuation frame ('M')
-        for (let i = 2; i < 1 + count && i < bytes.length; i++) {
-          collected.push(bytes[i]);
-        }
-      } else {
-        for (let i = 1; i <= count && i < bytes.length; i++) {
-          collected.push(bytes[i]);
-        }
+      let payload: Uint8Array;
+      try {
+        payload = decodeHidInputReport(bytes);
+      } catch (err) {
+        cleanup();
+        reject(err);
+        return;
+      }
+      for (const b of payload) {
+        collected.push(b);
       }
 
       if (collected.length >= expectedResponseBytes) {
@@ -176,6 +177,13 @@ async function readMemoryRange(
     const resp = await sendWebHidCmdGetResp(device, cmd, 5 + chunkLen);
     if (resp[0] !== 0x57) {
       throw new Error(`Invalid Read block response header at 0x${addr.toString(16)}: 0x${resp[0]?.toString(16)}`);
+    }
+    // The radio echoes 'W' + address + length; reject a block meant for a different address.
+    const echoAddr = (resp[1] << 16) | (resp[2] << 8) | resp[3];
+    if (echoAddr !== addr || resp[4] !== chunkLen) {
+      throw new Error(
+        `Read block echo mismatch: requested 0x${addr.toString(16)} (${chunkLen} bytes), radio answered 0x${echoAddr.toString(16)} (${resp[4]} bytes)`
+      );
     }
     targetBuffer.set(resp.subarray(5, 5 + chunkLen), addr);
     await sendWebHidCmdGetResp(device, HID_CMD_ACK, 1);
