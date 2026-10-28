@@ -92,6 +92,30 @@ describe('readRadioViaWebHid', () => {
     await expect(readRadioViaWebHid({ includeCalibration: false })).resolves.toBeDefined();
   });
 
+  it('reuses a radio the page was already granted instead of opening the picker', async () => {
+    const radio = new FakeHidRadio();
+    restoreNavigator = installFakeRadio(radio, { granted: true });
+    await readRadioViaWebHid({ includeCalibration: false });
+    await readRadioViaWebHid({ includeCalibration: false });
+    expect(radio.pickerOpened).toBe(0);
+  });
+
+  it('opens the picker only when no radio has been granted yet', async () => {
+    const radio = new FakeHidRadio();
+    restoreNavigator = installFakeRadio(radio);
+    await readRadioViaWebHid({ includeCalibration: false });
+    expect(radio.pickerOpened).toBe(1);
+  });
+
+  it('refuses a picked device that is not the radio, before sending anything', async () => {
+    const keyboard = new FakeHidRadio({ productName: 'USB Keyboard' });
+    restoreNavigator = installFakeRadio(keyboard);
+    await expect(readRadioViaWebHid({ includeCalibration: false })).rejects.toThrow(
+      '"USB Keyboard" is not the IC-980 Pro Max programming cable. Choose the device named "ASER-471".'
+    );
+    expect(keyboard.commands).toEqual([]);
+  });
+
   it('rejects a read reply that echoes a different address', async () => {
     const radio = new FakeHidRadio({ echoAddressOverride: 0x000100 });
     restoreNavigator = installFakeRadio(radio);

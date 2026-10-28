@@ -12,12 +12,14 @@ import {
   HID_CMD_ACK,
   HID_CMD_END,
   HID_CMD_STX,
+  IC980_HID_PRODUCT_NAME,
   PROG81LS_HANDSHAKE,
   buildHidOutputReports,
   buildReadMemoryCommand,
   buildWriteMemoryCommand,
   decodeHidInputReport,
   getChannelSectorAddresses,
+  isIc980HidProductName,
 } from './hidProtocol';
 import { decryptRadioPassword } from './passwordCipher';
 
@@ -73,19 +75,41 @@ async function withRadioLock<T>(name: string, operation: () => Promise<T>): Prom
   }
 }
 
+interface WebHidApiLike {
+  getDevices?(): Promise<WebHidDeviceLike[]>;
+  requestDevice(opts: { filters: unknown[] }): Promise<WebHidDeviceLike[]>;
+}
+
 /**
- * Requests a HIROYASU IC-980 Pro Max ("ASER-471") USB HID device via the browser WebHID picker.
+ * Returns the HIROYASU IC-980 Pro Max ("ASER-471") USB HID device. A radio this page was already
+ * granted is reused without showing the picker; otherwise the browser WebHID picker is shown.
  */
 export async function requestWebHidDevice(): Promise<WebHidDeviceLike> {
   if (!isWebHidSupported()) {
     throw new Error('WebHID is not supported in this browser. Use Desktop App or Chrome/Edge.');
   }
-  const navHid = (navigator as unknown as { hid: { requestDevice(opts: { filters: unknown[] }): Promise<WebHidDeviceLike[]> } }).hid;
+  const navHid = (navigator as unknown as { hid: WebHidApiLike }).hid;
+
+  const granted = (await navHid.getDevices?.()) ?? [];
+  const known = granted.find((d) => isIc980HidProductName(d.productName));
+  if (known) {
+    return known;
+  }
+
+  // The radio's USB vendor/product IDs are not known, so the picker cannot be filtered to it.
+  // Check the chosen device's name instead of trusting whatever was picked.
   const devices = await navHid.requestDevice({ filters: [] });
   if (!devices || devices.length === 0) {
     throw new Error('No USB HID radio device was selected.');
   }
-  return devices[0];
+  const device = devices[0];
+  if (!isIc980HidProductName(device.productName)) {
+    throw new Error(
+      `"${device.productName || 'Unnamed HID device'}" is not the IC-980 Pro Max programming cable. ` +
+        `Choose the device named "${IC980_HID_PRODUCT_NAME}".`
+    );
+  }
+  return device;
 }
 
 /**
