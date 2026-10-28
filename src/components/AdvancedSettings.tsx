@@ -30,6 +30,7 @@ import type {
 import { CTCSS_TONES, DCS_CODES, RF_CALIBRATION_SIZE } from '../core/constants';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../core/backupBundle';
 import { isFrequencyInBand } from '../core/codeplugValidator';
+import { FileOnlyNote } from './FileOnlyNote';
 import {
   DTMF_CONTACT_NAME_MAX,
   maxDtmfContactCodeLength,
@@ -185,6 +186,10 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                 <p className="text-xs text-slate-400 mt-1">
                   Configure the active cross-band repeater mode (`EEPROM 0x120E5`) and up to 7 VHF↔UHF cross-band repeater frequency pairs.
                 </p>
+                <FileOnlyNote>
+                  The switch is written to the radio, but the 7 preset slots below are saved in the .Ysf file only:
+                  their location in radio memory is not known yet, so the radio keeps using its own stored presets.
+                </FileOnlyNote>
               </div>
 
               <div className="flex items-center gap-3 text-xs">
@@ -499,6 +504,10 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                     placeholder="e.g. 101"
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 font-mono text-cyan-200"
                   />
+                  <FileOnlyNote>
+                    Saved in the .Ysf file only. Writing to the radio does not change its local ID, because its
+                    location in radio memory is not known yet.
+                  </FileOnlyNote>
                 </div>
 
                 <div>

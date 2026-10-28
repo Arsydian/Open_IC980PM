@@ -32,6 +32,7 @@ import {
   TOT_LABELS,
   VOX_DELAY_LABELS,
 } from '../core/constants';
+import { FileOnlyNote } from './FileOnlyNote';
 
 interface GeneralSettingsProps {
   general: GeneralSettingsConfig;
@@ -751,6 +752,10 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                 <option value={1}>Welcome Message Strings</option>
                 <option value={2}>Battery Voltage</option>
               </select>
+              <FileOnlyNote>
+                Saved in the .Ysf file only. Writing to the radio does not change this setting, because its
+                location in radio memory is not known yet.
+              </FileOnlyNote>
             </div>
 
             <div>

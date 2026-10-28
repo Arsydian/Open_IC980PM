@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 /**
  * @file tests/advancedSettings.test.tsx
- * @description Advanced settings editors (`src/components/AdvancedSettings.tsx`).
+ * @description Advanced and General settings editors (`src/components/AdvancedSettings.tsx`,
+ * `src/components/GeneralSettings.tsx`).
  */
 
 import React, { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AdvancedSettings } from '../src/components/AdvancedSettings';
+import { GeneralSettings } from '../src/components/GeneralSettings';
 import { createDefaultCodeplug } from '../src/core/ysfCodec';
 import type { RadioCodeplug } from '../src/types/radio';
 
@@ -39,6 +41,32 @@ function renderAdvanced(initial: RadioCodeplug = createDefaultCodeplug()) {
   render(<Harness />);
   return latest;
 }
+
+describe('settings that are not written to the radio', () => {
+  it('marks the cross-band preset slots and the DTMF local ID as file-only', () => {
+    renderAdvanced();
+    expect(screen.getByRole('note').textContent).toMatch(/7 preset slots below are saved in the \.Ysf file only/);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /DTMF/ })[0]);
+    expect(screen.getByRole('note').textContent).toMatch(/does not change its local ID/);
+  });
+
+  it('marks the power-on display mode as file-only', () => {
+    const cp = createDefaultCodeplug();
+    render(
+      <GeneralSettings
+        general={cp.general}
+        vfoA={cp.vfoA}
+        vfoB={cp.vfoB}
+        onChangeGeneral={() => undefined}
+        onChangeVfoA={() => undefined}
+        onChangeVfoB={() => undefined}
+      />
+    );
+    const notes = screen.getAllByRole('note').map((n) => n.textContent);
+    expect(notes).toEqual([expect.stringMatching(/Writing to the radio does not change this setting/)]);
+  });
+});
 
 describe('DTMF address book contacts', () => {
   it('limits name and code to what fits in the 16-byte slot', () => {
