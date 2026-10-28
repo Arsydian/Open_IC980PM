@@ -35,6 +35,8 @@ import { createEmptyChannel, getChannelRawYsfBytes } from '../core/ysfCodec';
 import { computeChannelEepromAddress, extractChannelEeprom34Bytes } from '../core/eepromCodec';
 import { exportChirpCsv } from '../core/chirpCsvCodec';
 import { isFrequencyInBand } from '../core/codeplugValidator';
+import { applyRxFrequencyEdit, applyTxFrequencyEdit } from '../core/channelEdit';
+import { FrequencyInput } from './FrequencyInput';
 
 interface ChannelGridProps {
   codeplug: RadioCodeplug;
@@ -506,22 +508,12 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
                   {/* RX Frequency (MHz) */}
                   <td className="py-1.5 px-3">
                     <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        step="0.00125"
-                        value={ch.used && ch.rxFreqHz > 0 ? Number((ch.rxFreqHz / 1_000_000).toFixed(5)) : ''}
-                        placeholder="—"
-                        onChange={(e) => {
-                          const mhz = parseFloat(e.target.value);
-                          if (!Number.isFinite(mhz) || mhz <= 0) return;
-                          const hz = Math.round(mhz * 1_000_000);
-                          updateSingleChannel(ch.channelNumber, (prev) => ({
-                            ...prev,
-                            used: true,
-                            rxFreqHz: hz,
-                            txFreqHz: prev.used && prev.txFreqHz > 0 ? prev.txFreqHz : hz,
-                          }));
-                        }}
+                      <FrequencyInput
+                        valueHz={ch.used ? ch.rxFreqHz : 0}
+                        ariaLabel={`Channel ${ch.channelNumber} RX frequency (MHz)`}
+                        onCommit={(hz) =>
+                          updateSingleChannel(ch.channelNumber, (prev) => applyRxFrequencyEdit(prev, hz))
+                        }
                         className={`w-full bg-slate-950/90 border rounded px-2 py-1 text-xs focus:outline-none ${
                           !rxInBand
                             ? 'border-amber-500/70 text-amber-300'
@@ -538,22 +530,12 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
 
                   {/* TX Frequency (MHz) */}
                   <td className="py-1.5 px-3">
-                    <input
-                      type="number"
-                      step="0.00125"
-                      value={ch.used && ch.txFreqHz > 0 ? Number((ch.txFreqHz / 1_000_000).toFixed(5)) : ''}
-                      placeholder="—"
-                      onChange={(e) => {
-                        const mhz = parseFloat(e.target.value);
-                        if (!Number.isFinite(mhz) || mhz <= 0) return;
-                        const hz = Math.round(mhz * 1_000_000);
-                        updateSingleChannel(ch.channelNumber, (prev) => ({
-                          ...prev,
-                          used: true,
-                          txFreqHz: hz,
-                          rxFreqHz: prev.rxFreqHz > 0 ? prev.rxFreqHz : hz,
-                        }));
-                      }}
+                    <FrequencyInput
+                      valueHz={ch.used ? ch.txFreqHz : 0}
+                      ariaLabel={`Channel ${ch.channelNumber} TX frequency (MHz)`}
+                      onCommit={(hz) =>
+                        updateSingleChannel(ch.channelNumber, (prev) => applyTxFrequencyEdit(prev, hz))
+                      }
                       className={`w-full bg-slate-950/90 border rounded px-2 py-1 text-xs focus:outline-none ${
                         !txInBand
                           ? 'border-amber-500/70 text-amber-300'
