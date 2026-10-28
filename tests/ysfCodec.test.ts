@@ -13,6 +13,49 @@ import {
   isChannelBitSet,
 } from '../src/core/ysfCodec';
 
+const contactSlot = (buf: Uint8Array, i: number) => {
+  const off = YSF_OFFSETS.DTMF_ENTRIES_START + (15 + i) * 17;
+  return { text: new TextDecoder().decode(buf.subarray(off, off + 16)).replace(/\0+$/, ''), len: buf[off + 16] };
+};
+
+describe('DTMF address book contacts', () => {
+  it('keeps empty contact slots empty instead of writing "Contact:"', () => {
+    const cp = createDefaultCodeplug();
+    expect(cp.dtmf.contacts.every((c) => c.name === '' && c.code === '')).toBe(true);
+
+    const ysf = encodeYsfBuffer(cp);
+    for (let i = 0; i < 15; i++) {
+      expect(contactSlot(ysf, i)).toEqual({ text: '', len: 0 });
+    }
+  });
+
+  it('stores names and codes up to the 16-byte slot without cutting them to 7/8 characters', () => {
+    const cp = createDefaultCodeplug();
+    cp.dtmf.contacts[0] = { index: 1, name: 'BASE', code: '1234567890' }; // 4 + 1 + 10 = 15 bytes
+    cp.dtmf.contacts[1] = { index: 2, name: '', code: '0123456789ABCD*#' }; // unnamed: full 16
+    cp.dtmf.contacts[2] = { index: 3, name: 'A:B', code: '42' }; // ':' would split the slot
+
+    const ysf = encodeYsfBuffer(cp);
+    expect(contactSlot(ysf, 0)).toEqual({ text: 'BASE:1234567890', len: 15 });
+    expect(contactSlot(ysf, 1)).toEqual({ text: '0123456789ABCD*#', len: 16 });
+
+    const back = decodeYsfBuffer(ysf).dtmf.contacts;
+    expect(back[0]).toMatchObject({ name: 'BASE', code: '1234567890' });
+    expect(back[1]).toMatchObject({ name: '', code: '0123456789ABCD*#' });
+    expect(back[2]).toMatchObject({ name: 'AB', code: '42' });
+  });
+
+  it('re-encodes an unnamed code from another program byte-for-byte', () => {
+    const buf = encodeYsfBuffer(createDefaultCodeplug());
+    const off = YSF_OFFSETS.DTMF_ENTRIES_START + 15 * 17;
+    buf.set(new TextEncoder().encode('555123'), off);
+    buf[off + 16] = 6;
+
+    const again = encodeYsfBuffer(decodeYsfBuffer(buf));
+    expect(contactSlot(again, 0)).toEqual({ text: '555123', len: 6 });
+  });
+});
+
 describe('ysfCodec (47,046-byte .Ysf binary format)', () => {
   it('initializes a clean factory-default codeplug with 0 placeholder channels and Unassigned hotkeys', () => {
     const cp = createDefaultCodeplug();

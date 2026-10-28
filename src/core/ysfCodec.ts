@@ -68,6 +68,36 @@ const OFFSET_DIR_TO_INT: Record<OffsetDirection, number> = {
   '-': 2,
 };
 
+/** Bytes of text in a DTMF contact slot, stored as `name:code`, or just `code` when unnamed. */
+export const DTMF_CONTACT_FIELD_SIZE = 16;
+
+/** Longest contact name, which still leaves room for an 8-digit code after the `:`. */
+export const DTMF_CONTACT_NAME_MAX = 7;
+
+/** Strips characters a contact name cannot hold (non-printable ASCII and the `:` separator). */
+export function sanitizeDtmfContactName(name: string): string {
+  return name.replace(/[^\x20-\x39\x3B-\x7E]/g, '').slice(0, DTMF_CONTACT_NAME_MAX);
+}
+
+/** Longest DTMF code that fits in the contact slot next to `name`. */
+export function maxDtmfContactCodeLength(name: string): number {
+  const cleanName = sanitizeDtmfContactName(name);
+  return cleanName ? DTMF_CONTACT_FIELD_SIZE - cleanName.length - 1 : DTMF_CONTACT_FIELD_SIZE;
+}
+
+/** Text stored in a DTMF contact slot; empty when the contact has neither name nor code. */
+export function encodeDtmfContactField(name: string, code: string): string {
+  const cleanName = sanitizeDtmfContactName(name);
+  const cleanCode = code.slice(0, maxDtmfContactCodeLength(cleanName));
+  return cleanName ? `${cleanName}:${cleanCode}` : cleanCode;
+}
+
+/** Splits a DTMF contact slot back into name and code (inverse of `encodeDtmfContactField`). */
+export function decodeDtmfContactField(raw: string): { name: string; code: string } {
+  const sep = raw.indexOf(':');
+  return sep >= 0 ? { name: raw.slice(0, sep), code: raw.slice(sep + 1) } : { name: '', code: raw };
+}
+
 /**
  * Creates a clean, unprogrammed `ChannelRecord` for a given 1-based channel number (`1..500`).
  */
@@ -555,13 +585,8 @@ export function decodeYsfBuffer(inputBuffer: Uint8Array): RadioCodeplug {
   }
   for (let i = 0; i < 15; i++) {
     const contactOff = YSF_OFFSETS.DTMF_ENTRIES_START + (15 + i) * 17;
-    const rawStr = readFixedAscii(buf, contactOff, 16);
-    const [namePart, codePart] = rawStr.includes(':') ? rawStr.split(':', 2) : [`Contact ${i + 1}`, rawStr];
-    contacts.push({
-      index: i + 1,
-      name: namePart.slice(0, 10),
-      code: (codePart || '').slice(0, 16),
-    });
+    const { name, code } = decodeDtmfContactField(readFixedAscii(buf, contactOff, DTMF_CONTACT_FIELD_SIZE));
+    contacts.push({ index: i + 1, name, code });
   }
 
   const dtmf: DtmfConfig = {
@@ -768,8 +793,8 @@ export function encodeYsfBuffer(codeplug: RadioCodeplug): Uint8Array {
   for (let i = 0; i < 15; i++) {
     const contactOff = YSF_OFFSETS.DTMF_ENTRIES_START + (15 + i) * 17;
     const contact = d.contacts[i];
-    const combined = contact ? `${contact.name.slice(0, 7)}:${contact.code.slice(0, 8)}` : '';
-    writeFixedAscii(buf, contactOff, combined, 16);
+    const combined = contact ? encodeDtmfContactField(contact.name, contact.code) : '';
+    writeFixedAscii(buf, contactOff, combined, DTMF_CONTACT_FIELD_SIZE);
     buf[contactOff + 16] = combined.length;
   }
 

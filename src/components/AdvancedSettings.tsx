@@ -30,6 +30,11 @@ import type {
 import { CTCSS_TONES, DCS_CODES, RF_CALIBRATION_SIZE } from '../core/constants';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../core/backupBundle';
 import { isFrequencyInBand } from '../core/codeplugValidator';
+import {
+  DTMF_CONTACT_NAME_MAX,
+  maxDtmfContactCodeLength,
+  sanitizeDtmfContactName,
+} from '../core/ysfCodec';
 
 interface AdvancedSettingsProps {
   general: GeneralSettingsConfig;
@@ -589,11 +594,15 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                       <span className="col-span-2 font-mono text-slate-400">#{ct.index}</span>
                       <input
                         type="text"
-                        maxLength={10}
+                        maxLength={DTMF_CONTACT_NAME_MAX}
                         value={ct.name}
+                        aria-label={`Contact ${ct.index} name`}
                         onChange={(e) => {
                           const nextContacts = [...dtmf.contacts];
-                          nextContacts[idx] = { ...ct, name: e.target.value.slice(0, 10) };
+                          const name = sanitizeDtmfContactName(e.target.value);
+                          // A longer name leaves less room for the code in the shared 16-byte slot
+                          const code = ct.code.slice(0, maxDtmfContactCodeLength(name));
+                          nextContacts[idx] = { ...ct, name, code };
                           onChangeDtmf({ ...dtmf, contacts: nextContacts });
                         }}
                         placeholder="Contact Name"
@@ -601,13 +610,17 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                       />
                       <input
                         type="text"
-                        maxLength={16}
+                        maxLength={maxDtmfContactCodeLength(ct.name)}
                         value={ct.code}
+                        aria-label={`Contact ${ct.index} DTMF code`}
                         onChange={(e) => {
                           const nextContacts = [...dtmf.contacts];
                           nextContacts[idx] = {
                             ...ct,
-                            code: e.target.value.toUpperCase().replace(/[^0-9A-D*#]/g, '').slice(0, 16),
+                            code: e.target.value
+                              .toUpperCase()
+                              .replace(/[^0-9A-D*#]/g, '')
+                              .slice(0, maxDtmfContactCodeLength(ct.name)),
                           };
                           onChangeDtmf({ ...dtmf, contacts: nextContacts });
                         }}
