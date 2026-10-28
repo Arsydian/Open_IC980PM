@@ -33,7 +33,7 @@
 ## Quick Start Guide
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (`v18.0.0` or higher)
+- [Node.js](https://nodejs.org/) (`v22.12.0` or higher; required by Electron 45, Vite 8 and Vitest 5)
 - USB programming cable for the HIROYASU IC-980 Pro Max (standard K-plug / accessory connector)
 
 ### Installation & Running
@@ -84,7 +84,7 @@ npm run electron:dev
    - Click **Start Radio Read**. A real-time progress bar will track the `PROG81LS` handshake, sector reads (`0x00000..0x151FD`), and calibration extraction.
 4. **Write To Radio:**
    - Click the cyan **Write Radio** button.
-   - **Automatic Pre-Write Rollback Vault:** Before any byte is sent to the radio, Open_IC980PM automatically saves a full snapshot of your current codeplug to the local Rollback Vault. If anything is interrupted, you can restore your radio with one click.
+   - **Automatic Pre-Write Rollback Vault:** Before any byte is sent to the radio, Open_IC980PM reads the radio and saves its current contents to the local Rollback Vault. If that backup cannot be saved, nothing is written. To roll back, load the snapshot from **Backup & Vault** and write it to the radio.
    - Click **Start Radio Write**. Upon completion, the radio will emit a reboot beep and load your new configuration.
 
 ---
@@ -193,7 +193,7 @@ Click **Backup & Vault** in the top navigation bar:
 - **Export `.Ysf` File:** Saves a pristine `47,046`-byte binary file 100% compatible with the official factory software.
 - **Export `.ic980.json` Bundle:** Saves a rich JSON configuration containing the full binary codeplug plus RepeaterBook metadata (city, callsign, distance, notes) and RF calibration.
 - **Restore from File:** Load either a `.Ysf` binary or a `.ic980.json` bundle.
-- **Rollback Vault:** Inspect past pre-write safety snapshots and restore your radio to any previous state with a single click.
+- **Rollback Vault:** Inspect past pre-write safety snapshots (the radio's contents just before each write). Restoring one loads it into the editor; write it to the radio to complete the rollback.
 
 ---
 

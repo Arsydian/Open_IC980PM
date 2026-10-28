@@ -25,6 +25,7 @@ import {
   encodeRgbaToBootLogoPayload,
 } from '../src/core/bmpLogoCodec';
 import { createDefaultCodeplug, createEmptyChannel, decodeYsfBuffer, encodeYsfBuffer } from '../src/core/ysfCodec';
+import { EEPROM_IMAGE_SIZE } from '../src/core/constants';
 
 describe('EEPROM Address Formula, Marshaling & Password Cipher', () => {
   it('computes exact banked EEPROM addresses for channels 1..500 (sub_4280E0)', () => {
@@ -98,6 +99,50 @@ describe('EEPROM Address Formula, Marshaling & Password Cipher', () => {
     expect(recoveredCp.hotkeys.key2Short).toBe(0x02);
     expect(recoveredCp.general.passwordEnabled).toBe(true);
     expect(recoveredCp.general.password).toBe('654321');
+  });
+
+  it('reads band limits back from EEPROM 0x12006 so a read -> write keeps the radio limits', () => {
+    // Radio unlocked to UHF 400-520 MHz; the editor still holds the 400-480 default.
+    const eeprom = new Uint8Array(EEPROM_IMAGE_SIZE).fill(0xff);
+    const view = new DataView(eeprom.buffer);
+    view.setUint32(0x12006, 13600000, true); // VHF min 136.00000 MHz (10 Hz units)
+    view.setUint32(0x1200a, 17400000, true); // VHF max 174.00000 MHz
+    view.setUint32(0x1200e, 40000000, true); // UHF min 400.00000 MHz
+    view.setUint32(0x12012, 52000000, true); // UHF max 520.00000 MHz
+
+    const readCp = decodeYsfBuffer(eepromImageToYsf(eeprom, encodeYsfBuffer(createDefaultCodeplug())));
+    expect(readCp.bandLimits).toEqual({ uhfMinMhz: 400, uhfMaxMhz: 520, vhfMinMhz: 136, vhfMaxMhz: 174 });
+
+    const writtenBack = new DataView(ysfToEepromImage(encodeYsfBuffer(readCp)).buffer);
+    expect(writtenBack.getUint32(0x12012, true)).toBe(52000000);
+
+    // Unprogrammed limits (0xFFFFFFFF) fall back to the template instead of a bogus value.
+    const blank = decodeYsfBuffer(eepromImageToYsf(new Uint8Array(EEPROM_IMAGE_SIZE).fill(0xff)));
+    expect(blank.bandLimits.uhfMaxMhz).toBe(480);
+  });
+
+  it('keeps unmapped radio bytes when writing on top of the radio image', () => {
+    const radioImage = new Uint8Array(EEPROM_IMAGE_SIZE).fill(0xff);
+    radioImage.fill(0x5a, 0x12000, 0x12100); // whole settings block: unknown radio values
+    radioImage.fill(0x5a, 0x11000, 0x11060); // VFO block incl. padding
+    radioImage.fill(0x5a, 0x1044, 0x1044 + 34); // stale record in channel 2's slot
+
+    const cp = createDefaultCodeplug();
+    cp.general.squelchLevel = 7;
+    const ysf = encodeYsfBuffer(cp);
+
+    const merged = ysfToEepromImage(ysf, radioImage);
+    for (const unmapped of [0x12016, 0x12069, 0x1206e, 0x120d0, 0x120f0, 0x11012, 0x1102b]) {
+      expect(merged[unmapped]).toBe(0x5a);
+    }
+    expect(new DataView(merged.buffer).getUint16(0x12056, true)).toBe(7); // mapped field is written
+    expect(merged[0x120fb]).toBe(0x37); // magic byte still set
+    expect(Array.from(merged.subarray(0x1044, 0x1044 + 34)).every((b) => b === 0xff)).toBe(true);
+
+    // Without a radio image the previous defaults apply (0x00 settings, 0xFF elsewhere).
+    const fresh = ysfToEepromImage(ysf);
+    expect(fresh[0x12016]).toBe(0x00);
+    expect(fresh[0x11012]).toBe(0xff);
   });
 
   it('frames single and multi-report (' + "'M'" + ') USB HID packets with ones-complement checksum', () => {

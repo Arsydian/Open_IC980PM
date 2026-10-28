@@ -29,6 +29,7 @@ import type {
 } from '../types/radio';
 import { CTCSS_TONES, DCS_CODES, RF_CALIBRATION_SIZE } from '../core/constants';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../core/backupBundle';
+import { isFrequencyInBand } from '../core/codeplugValidator';
 
 interface AdvancedSettingsProps {
   general: GeneralSettingsConfig;
@@ -69,13 +70,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
   // Out-of-band channel validator for Band Unlock tab
   const outOfBandChannels = channels.filter((ch) => {
     if (!ch.used || ch.rxFreqHz <= 0) return false;
-    const checkMhz = (hz: number) => {
-      const m = hz / 1_000_000;
-      const vhfOk = m >= bandLimits.vhfMinMhz - 0.0001 && m <= bandLimits.vhfMaxMhz + 0.0001;
-      const uhfOk = m >= bandLimits.uhfMinMhz - 0.0001 && m <= bandLimits.uhfMaxMhz + 0.0001;
-      return vhfOk || uhfOk;
-    };
-    return !checkMhz(ch.rxFreqHz) || !checkMhz(ch.txFreqHz);
+    return !isFrequencyInBand(ch.rxFreqHz, bandLimits) || !isFrequencyInBand(ch.txFreqHz, bandLimits);
   });
 
   const handleExportCalibration = () => {

@@ -80,6 +80,43 @@ export function buildHidOutputReports(payload: Uint8Array): Uint8Array[] {
 }
 
 /**
+ * Decodes one 64-byte HID Input Report body (OS-level Report ID already stripped) using the
+ * exact framing produced by `buildHidOutputReports`, and verifies its checksum:
+ * - Continuation report: `[0x3F, 0x4D ('M'), ...chunk61, (~sum('M' + chunk61)) & 0xFF]`
+ * - Single / final report: `[len (0..62), ...payload, (~sum(payload)) & 0xFF]`
+ *
+ * @returns the payload bytes carried by this report
+ * @throws if the length byte is invalid or the checksum does not match, so a framing mismatch
+ *   with the radio fails loudly instead of feeding shifted bytes into the codeplug
+ */
+export function decodeHidInputReport(report: Uint8Array): Uint8Array {
+  if (report.length < 2) {
+    throw new Error(`USB HID report too short (${report.length} bytes).`);
+  }
+
+  if (report[0] === 0x3f && report[1] === 0x4d) {
+    if (report.length < 64) {
+      throw new Error(`USB HID continuation report truncated (${report.length} bytes).`);
+    }
+    const bodyWithM = report.subarray(1, 63);
+    if (computeHidOnesComplementChecksum(bodyWithM) !== report[63]) {
+      throw new Error('USB HID checksum mismatch in continuation report.');
+    }
+    return report.slice(2, 63);
+  }
+
+  const len = report[0];
+  if (len > 62 || 2 + len > report.length) {
+    throw new Error(`USB HID report has invalid length byte 0x${len.toString(16)}.`);
+  }
+  const payload = report.subarray(1, 1 + len);
+  if (computeHidOnesComplementChecksum(payload) !== report[1 + len]) {
+    throw new Error('USB HID checksum mismatch in report.');
+  }
+  return payload.slice();
+}
+
+/**
  * Builds a 5-byte Read Memory command (`'R'` + 24-bit Big-Endian address + 1-byte length).
  */
 export function buildReadMemoryCommand(address24: number, length: number): Uint8Array {

@@ -2,10 +2,11 @@
  * @file src/components/RadioSyncModal.tsx
  * @description Direct USB HID / WebHID Read & Write modal for the HIROYASU IC-980 Pro Max
  * (`VendorName: "ASER _HID"`, `ProductName: "ASER-471"`, `PROG81LS` handshake).
- * Automatically captures a Pre-Write EEPROM Safety Snapshot to the Rollback Vault before writing.
+ * Before writing, blocks codeplugs that fail `validateCodeplugForWrite` and backs up the radio's
+ * current contents to the Rollback Vault.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Download,
@@ -20,7 +21,7 @@ import type { RadioCodeplug } from '../types/radio';
 import { decodeYsfBuffer, encodeYsfBuffer } from '../core/ysfCodec';
 import { eepromImageToYsf, ysfToEepromImage } from '../core/eepromCodec';
 import {
-  createSnapshotFromCodeplug,
+  createSnapshotFromRadioImage,
   saveSnapshotToVault,
   uint8ArrayToBase64,
 } from '../core/backupBundle';
@@ -28,6 +29,10 @@ import {
   readRadioViaWebHid,
   writeRadioViaWebHid,
 } from '../core/webHidTransport';
+import { validateCodeplugForWrite } from '../core/codeplugValidator';
+
+/** How many pre-write problems to list before summarizing the rest. */
+const MAX_LISTED_ISSUES = 8;
 
 interface RadioSyncModalProps {
   isOpen: boolean;
@@ -51,9 +56,16 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [completedMsg, setCompletedMsg] = useState<string | null>(null);
 
+  const writeIssues = useMemo(
+    () => (isOpen && mode === 'write' ? validateCodeplugForWrite(codeplug) : []),
+    [isOpen, mode, codeplug]
+  );
+  const writeBlocked = mode === 'write' && writeIssues.length > 0;
+
   if (!isOpen) return null;
 
   const handleStartTransfer = async () => {
+    if (writeBlocked) return;
     setIsRunning(true);
     setErrorMsg(null);
     setCompletedMsg(null);
@@ -72,19 +84,19 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
         onCodeplugReadFromRadio(decoded);
         setCompletedMsg('Successfully read configuration from HIROYASU IC-980 Pro Max!');
       } else {
-        // 1. Automatically create a Pre-Write Safety Snapshot in the Rollback Vault
-        const snap = createSnapshotFromCodeplug(
-          codeplug,
-          `Pre-Write Safety Snapshot (${new Date().toLocaleTimeString()})`
-        );
-        await saveSnapshotToVault(snap);
+        await writeRadioViaWebHid(async (currentRadioImage) => {
+          // 1. Back up what is on the radio right now; abort before writing if that fails
+          const snap = createSnapshotFromRadioImage(
+            currentRadioImage,
+            `Radio before write (${new Date().toLocaleTimeString()})`
+          );
+          await saveSnapshotToVault(snap);
 
-        // 2. Encode .Ysf -> EEPROM Image and write over USB HID
-        const ysfBuf = encodeYsfBuffer(codeplug);
-        const eepromImg = ysfToEepromImage(ysfBuf);
-        await writeRadioViaWebHid(eepromImg, (ev) => setProgress(ev));
+          // 2. Encode .Ysf -> EEPROM Image to write over USB HID
+          return ysfToEepromImage(encodeYsfBuffer(codeplug), currentRadioImage);
+        }, (ev) => setProgress(ev));
         setCompletedMsg(
-          'Successfully wrote codeplug to HIROYASU IC-980 Pro Max! Pre-write safety snapshot saved to Rollback Vault.'
+          'Successfully wrote codeplug to HIROYASU IC-980 Pro Max! The radio’s previous contents were saved to the Rollback Vault.'
         );
       }
     } catch (err) {
@@ -130,11 +142,33 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
               <li>Turn the radio power switch ON and ensure it is idle on VFO/Memory screen (not transmitting).</li>
               <li>
                 {mode === 'write'
-                  ? 'An automatic Rollback Vault snapshot will be saved before writing.'
+                  ? 'The radio is read first and its current contents saved to the Rollback Vault; if that backup fails, nothing is written.'
                   : 'Select whether to also back up the 775-byte RF Calibration region (0x18000).'}
               </li>
             </ol>
           </div>
+
+          {writeBlocked && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2 text-rose-200">
+              <div className="flex items-start gap-2.5 font-semibold">
+                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>
+                  Fix {writeIssues.length === 1 ? 'this problem' : `these ${writeIssues.length} problems`} before
+                  writing. Nothing will be sent to the radio until they are resolved.
+                </span>
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-rose-200/90">
+                {writeIssues.slice(0, MAX_LISTED_ISSUES).map((issue, idx) => (
+                  <li key={idx}>
+                    <span className="font-semibold">{issue.location}:</span> {issue.message}
+                  </li>
+                ))}
+              </ul>
+              {writeIssues.length > MAX_LISTED_ISSUES && (
+                <div className="text-rose-300/80">…and {writeIssues.length - MAX_LISTED_ISSUES} more.</div>
+              )}
+            </div>
+          )}
 
           {mode === 'read' && (
             <div className="space-y-3">
@@ -206,7 +240,7 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
 
             <button
               type="button"
-              disabled={isRunning}
+              disabled={isRunning || writeBlocked}
               onClick={handleStartTransfer}
               className="inline-flex items-center gap-2 px-5 py-2 rounded-xl font-bold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-md disabled:opacity-50"
             >
