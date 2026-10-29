@@ -7,6 +7,7 @@
 import type { Bandwidth, ChannelInsertionMode, ChannelRecord, ModulationMode, ToneType, TxPower } from '../types/radio';
 import { CTCSS_TONES, DCS_CODES, MAX_CHANNELS } from './constants';
 import { createEmptyChannel } from './ysfCodec';
+import type { ChannelRenumbering } from './channelEdit';
 
 /**
  * CHIRP modes the IC-980 Pro Max cannot use (digital voice, SSB/CW/data, broadcast FM).
@@ -408,7 +409,7 @@ export function mergeImportedChannels(
   incomingChannels: ChannelRecord[],
   mode: ChannelInsertionMode = 'append_empty',
   startChannelNumber: number = 1
-): { channels: ChannelRecord[]; importedCount: number; skippedCount: number } {
+): { channels: ChannelRecord[]; importedCount: number; skippedCount: number; renumbering: ChannelRenumbering } {
   const result = existingChannels.map((ch, idx) => ({
     ...ch,
     channelNumber: idx + 1,
@@ -416,6 +417,7 @@ export function mergeImportedChannels(
 
   const safeStartIdx = Math.max(0, Math.min(MAX_CHANNELS - 1, startChannelNumber - 1));
   let importedCount = 0;
+  const renumbering = new Map<number, number>();
 
   if (mode === 'append_empty') {
     let cursor = 0;
@@ -464,6 +466,11 @@ export function mergeImportedChannels(
     });
     const combined = [...prefix, ...inserted, ...shifted];
     importedCount = inserted.length;
+    combined.forEach((ch, i) => {
+      if (ch.used && !inserted.includes(ch) && ch.channelNumber !== i + 1) {
+        renumbering.set(ch.channelNumber, i + 1);
+      }
+    });
     for (let i = 0; i < MAX_CHANNELS; i++) {
       result[i] = {
         ...(combined[i] ?? createEmptyChannel(i + 1)),
@@ -472,5 +479,5 @@ export function mergeImportedChannels(
     }
   }
 
-  return { channels: result, importedCount, skippedCount: incomingChannels.length - importedCount };
+  return { channels: result, importedCount, skippedCount: incomingChannels.length - importedCount, renumbering };
 }

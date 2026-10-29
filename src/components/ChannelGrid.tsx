@@ -26,12 +26,14 @@ import { computeChannelEepromAddress, extractChannelEeprom34Bytes } from '../cor
 import { exportChirpCsv } from '../core/chirpCsvCodec';
 import { isFrequencyInBand } from '../core/codeplugValidator';
 import { ChannelRow, type ChannelUpdater } from './ChannelRow';
+import { sortChannels, swapChannels, type ChannelRenumbering } from '../core/channelEdit';
 
 interface ChannelGridProps {
   codeplug: RadioCodeplug;
   selectedChannelNumber: number;
   onSelectChannel: (chNum: number) => void;
-  onUpdateChannels: (channels: ChannelRecord[]) => void;
+  /** `renumbering` is given when channels moved, so settings that refer to a channel can follow it. */
+  onUpdateChannels: (channels: ChannelRecord[], renumbering?: ChannelRenumbering) => void;
   onOpenImportModal: () => void;
 }
 
@@ -108,11 +110,8 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= MAX_CHANNELS) return;
 
-    const next = channels.map((c) => ({ ...c }));
-    const temp = { ...next[idx], channelNumber: targetIdx + 1 };
-    next[idx] = { ...next[targetIdx], channelNumber: idx + 1 };
-    next[targetIdx] = temp;
-    onUpdateChannels(next);
+    const { channels: next, renumbering } = swapChannels(channels, idx + 1, targetIdx + 1);
+    onUpdateChannels(next, renumbering);
     onSelectChannel(targetIdx + 1);
   };
 
@@ -126,22 +125,8 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
     ) {
       return;
     }
-    const active = channels.filter((c) => c.used && c.rxFreqHz > 0);
-    if (by === 'freq') {
-      active.sort((a, b) => a.rxFreqHz - b.rxFreqHz || a.name.localeCompare(b.name));
-    } else {
-      active.sort((a, b) => a.name.localeCompare(b.name) || a.rxFreqHz - b.rxFreqHz);
-    }
-
-    const next: ChannelRecord[] = [];
-    for (let i = 0; i < MAX_CHANNELS; i++) {
-      if (i < active.length) {
-        next.push({ ...active[i], channelNumber: i + 1 });
-      } else {
-        next.push(createEmptyChannel(i + 1));
-      }
-    }
-    onUpdateChannels(next);
+    const { channels: next, renumbering } = sortChannels(channels, by, createEmptyChannel);
+    onUpdateChannels(next, renumbering);
   };
 
   const handleCopySelected = () => {

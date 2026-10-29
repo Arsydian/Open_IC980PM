@@ -403,3 +403,13 @@ describe('CHIRP CSV edge cases', () => {
     expect(parseChirpOrCpsCsv(exportChirpCsv([ch]))[0].txFreqHz).toBe(446_000_000);
   });
 });
+
+describe('insert_at renumbering', () => {
+  it('reports which existing channels moved', () => {
+    const existing = createDefaultCodeplug().channels;
+    for (const n of [1, 2, 3]) Object.assign(existing[n - 1], { used: true, rxFreqHz: 146_000_000 + n, txFreqHz: 146_000_000 + n, name: `C${n}` });
+    const incoming = parseChirpOrCpsCsv('Name,Frequency\nNEW,146.52');
+    const { renumbering } = mergeImportedChannels(existing, incoming, 'insert_at', 2);
+    expect([...renumbering]).toEqual([[2, 3], [3, 4]]);
+  });
+});

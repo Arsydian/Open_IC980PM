@@ -9,6 +9,9 @@ import {
   applyTxFrequencyEdit,
   formatMhzInput,
   parseMhzInput,
+  remapChannelNumber,
+  sortChannels,
+  swapChannels,
   toneValueForType,
 } from '../src/core/channelEdit';
 import { createEmptyChannel } from '../src/core/ysfCodec';
@@ -83,5 +86,36 @@ describe('applyTxFrequencyEdit', () => {
   it('makes an empty channel simplex when TX is typed first', () => {
     const ch = applyTxFrequencyEdit(createEmptyChannel(5), 446_000_000);
     expect(ch).toMatchObject({ used: true, rxFreqHz: 446_000_000, txFreqHz: 446_000_000 });
+  });
+});
+
+describe('reordering channels', () => {
+  const ch = (n: number, name: string, rxHz: number) => ({ ...createEmptyChannel(n), used: true, name, rxFreqHz: rxHz, txFreqHz: rxHz });
+  const list = () => {
+    const channels = Array.from({ length: 6 }, (_, i) => createEmptyChannel(i + 1));
+    channels[0] = ch(1, 'HIGH', 147_000_000);
+    channels[2] = ch(3, 'NOFREQ', 0); // programmed but without an RX frequency
+    channels[4] = ch(5, 'LOW', 146_000_000);
+    return channels;
+  };
+
+  it('sortChannels keeps every programmed channel and reports where each moved', () => {
+    const { channels, renumbering } = sortChannels(list(), 'freq', createEmptyChannel);
+    expect(channels.map((c) => (c.used ? c.name : '-'))).toEqual(['LOW', 'HIGH', 'NOFREQ', '-', '-', '-']);
+    expect(channels.map((c) => c.channelNumber)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect([...renumbering]).toEqual([[5, 1], [1, 2]]);
+  });
+
+  it('swapChannels reports both moves', () => {
+    const { channels, renumbering } = swapChannels(list(), 1, 2);
+    expect(channels[1].name).toBe('HIGH');
+    expect([...renumbering]).toEqual([[1, 2], [2, 1]]);
+  });
+
+  it('remapChannelNumber follows moved channels and leaves 0 (off) alone', () => {
+    const renumbering = new Map([[5, 1]]);
+    expect(remapChannelNumber(5, renumbering)).toBe(1);
+    expect(remapChannelNumber(3, renumbering)).toBe(3);
+    expect(remapChannelNumber(0, renumbering)).toBe(0);
   });
 });

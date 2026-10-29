@@ -486,8 +486,11 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1">Priority Scan Channel (0=OFF)</label>
+              <label htmlFor="priority-scan-channel" className="block text-slate-400 mb-1">
+                Priority Scan Channel (0=OFF)
+              </label>
               <input
+                id="priority-scan-channel"
                 type="number"
                 min={0}
                 max={500}

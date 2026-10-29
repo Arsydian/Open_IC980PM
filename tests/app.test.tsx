@@ -121,3 +121,24 @@ describe('saving a .Ysf file', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('priority scan channel', () => {
+  it('follows its channel when the grid is sorted', { timeout: 30_000 }, async () => {
+    const cp = createDefaultCodeplug();
+    ['C1', 'C2', 'C3'].forEach((name, i) => {
+      const hz = 147_000_000 - i * 15_000; // descending, so sorting by frequency reverses them
+      Object.assign(cp.channels[i], { used: true, rxFreqHz: hz, txFreqHz: hz, name });
+    });
+    cp.general.priorityScanChannel = 1;
+    const { container } = render(<App />);
+    openFile(container, new File([encodeYsfBuffer(cp) as unknown as BlobPart], 'three.Ysf'));
+    await screen.findByRole('status', {}, { timeout: WAIT_MS });
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: /Sort Freq/ }));
+    fireEvent.click(screen.getByRole('button', { name: /General & VFO Config/ }));
+
+    expect(screen.getByLabelText(/Priority Scan Channel/)).toHaveProperty('value', '3');
+    vi.restoreAllMocks();
+  });
+});

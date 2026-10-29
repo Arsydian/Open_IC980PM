@@ -34,6 +34,7 @@ import {
   encodeYsfBuffer,
 } from './core/ysfCodec';
 import { mergeImportedChannels } from './core/chirpCsvCodec';
+import { remapChannelNumber, type ChannelRenumbering } from './core/channelEdit';
 import { deserializeRichBundle, ysfDropsExtras } from './core/backupBundle';
 import { fileSizeProblem } from './core/fileLimits';
 import { TitleBar } from './components/TitleBar';
@@ -109,8 +110,15 @@ export const App: React.FC = () => {
     setHasUnsavedChanges(true);
   };
 
-  const handleUpdateChannels = (channels: ChannelRecord[]) => {
-    applyCodeplugUpdate((prev) => ({ ...prev, channels }));
+  const handleUpdateChannels = (channels: ChannelRecord[], renumbering?: ChannelRenumbering) => {
+    applyCodeplugUpdate((prev) => ({
+      ...prev,
+      channels,
+      // Keep the priority scan setting on the same channel when channels are renumbered
+      general: renumbering
+        ? { ...prev.general, priorityScanChannel: remapChannelNumber(prev.general.priorityScanChannel, renumbering) }
+        : prev.general,
+    }));
   };
 
   const handleUpdateGeneral = (general: GeneralSettingsConfig) => {
@@ -146,13 +154,13 @@ export const App: React.FC = () => {
     mode: ChannelInsertionMode,
     targetChannelNumber: number
   ) => {
-    const { channels: merged, importedCount, skippedCount } = mergeImportedChannels(
+    const { channels: merged, importedCount, skippedCount, renumbering } = mergeImportedChannels(
       codeplug.channels,
       incoming,
       mode,
       targetChannelNumber
     );
-    handleUpdateChannels(merged);
+    handleUpdateChannels(merged, renumbering);
     setActiveView('channels');
     if (skippedCount > 0) {
       showToast(

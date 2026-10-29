@@ -44,6 +44,55 @@ export function applyRxFrequencyEdit(prev: ChannelRecord, rxHz: number): Channel
   return { ...prev, used: true, rxFreqHz: rxHz, txFreqHz: txHz > 0 ? txHz : rxHz };
 }
 
+/** Old 1-based channel number → new number, for channels that moved when the list was reordered. */
+export type ChannelRenumbering = ReadonlyMap<number, number>;
+
+/**
+ * Where a setting that refers to channel `channelNumber` (e.g. the priority scan channel; `0` = off)
+ * should point after `renumbering`.
+ */
+export function remapChannelNumber(channelNumber: number, renumbering: ChannelRenumbering): number {
+  return renumbering.get(channelNumber) ?? channelNumber;
+}
+
+/**
+ * Sorts every programmed channel by frequency or name into channels 1..N (channels without an RX
+ * frequency go last when sorting by frequency) and empties the rest.
+ */
+export function sortChannels(
+  channels: ChannelRecord[],
+  by: 'freq' | 'name',
+  makeEmpty: (channelNumber: number) => ChannelRecord
+): { channels: ChannelRecord[]; renumbering: ChannelRenumbering } {
+  const freqKey = (c: ChannelRecord) => (c.rxFreqHz > 0 ? c.rxFreqHz : Number.MAX_SAFE_INTEGER);
+  const programmed = channels.filter((c) => c.used);
+  programmed.sort((a, b) =>
+    by === 'freq'
+      ? freqKey(a) - freqKey(b) || a.name.localeCompare(b.name)
+      : a.name.localeCompare(b.name) || freqKey(a) - freqKey(b)
+  );
+  const renumbering = new Map<number, number>();
+  const sorted = channels.map((_, i) => {
+    const ch = programmed[i];
+    if (!ch) return makeEmpty(i + 1);
+    if (ch.channelNumber !== i + 1) renumbering.set(ch.channelNumber, i + 1);
+    return { ...ch, channelNumber: i + 1 };
+  });
+  return { channels: sorted, renumbering };
+}
+
+/** Swaps channels `a` and `b` (1-based). */
+export function swapChannels(
+  channels: ChannelRecord[],
+  a: number,
+  b: number
+): { channels: ChannelRecord[]; renumbering: ChannelRenumbering } {
+  const next = [...channels];
+  next[a - 1] = { ...channels[b - 1], channelNumber: a };
+  next[b - 1] = { ...channels[a - 1], channelNumber: b };
+  return { channels: next, renumbering: new Map([[a, b], [b, a]]) };
+}
+
 /** Sets a channel's TX frequency. An empty channel gets the same RX frequency (simplex). */
 export function applyTxFrequencyEdit(prev: ChannelRecord, txHz: number): ChannelRecord {
   const rxHz = prev.used && prev.rxFreqHz > 0 ? prev.rxFreqHz : txHz;
