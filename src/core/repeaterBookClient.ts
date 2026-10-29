@@ -563,7 +563,14 @@ export async function queryRepeaterBookApi(
     if (query.apiToken && query.apiToken.trim()) {
       headers[REPEATERBOOK_TOKEN_HEADER] = query.apiToken.trim();
     }
-    const response = await fetch(url, { headers });
+    // RepeaterBook: never follow redirects on authenticated requests; a 3xx is a stop condition
+    // (browsers report it as an opaque redirect with status 0).
+    const response = await fetch(url, { headers, redirect: 'manual' });
+    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+      throw new Error(
+        'RepeaterBook answered with a redirect, so the request was stopped without following it (your token was not re-sent). Try again later.'
+      );
+    }
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
         throw new Error(

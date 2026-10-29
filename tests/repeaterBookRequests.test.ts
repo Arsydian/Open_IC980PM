@@ -10,7 +10,7 @@ import {
   clearRepeaterBookCache,
   queryRepeaterBookApi,
 } from '../src/core/repeaterBookClient';
-import { fetchRepeaterBookJson } from '../electron/repeaterBookProxy';
+import { REDIRECT_STOPPED_MESSAGE, fetchRepeaterBookJson } from '../electron/repeaterBookProxy';
 import type { RepeaterBookQuery } from '../src/types/radio';
 
 const TOKEN = 'rbuapp_secret123';
@@ -50,6 +50,14 @@ describe('browser requests', () => {
     expect(headers).not.toHaveProperty('Authorization');
     expect(headers).not.toHaveProperty('X-Api-Key');
   });
+
+  it('do not follow redirects and stop on a 3xx', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 301, headers: { Location: 'https://x.example/' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(queryRepeaterBookApi(query)).rejects.toThrow(/request was stopped without following it/);
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].redirect).toBe('manual');
+  });
 });
 
 describe('Electron proxy requests', () => {
@@ -65,6 +73,17 @@ describe('Electron proxy requests', () => {
       'User-Agent': UA,
       [REPEATERBOOK_TOKEN_HEADER]: TOKEN,
     });
+  });
+
+  it('does not follow redirects and stops on a 3xx', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(null, { status: 302, headers: { Location: 'https://elsewhere.example/' } })
+    );
+    await expect(
+      fetchRepeaterBookJson('https://www.repeaterbook.com/api/export.php', TOKEN, UA, fetchMock)
+    ).rejects.toThrow(REDIRECT_STOPPED_MESSAGE);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].redirect).toBe('manual');
   });
 
   it('refuses URLs that are not HTTPS repeaterbook.com', async () => {

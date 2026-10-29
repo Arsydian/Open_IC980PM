@@ -23,6 +23,14 @@ export function isValidRepeaterBookUrl(rawUrl: string): boolean {
   }
 }
 
+export const REDIRECT_STOPPED_MESSAGE =
+  'RepeaterBook answered with a redirect, so the request was stopped without following it (your token was not re-sent). Try again later.';
+
+/** Whether a `redirect: 'manual'` response is a redirect (Node keeps the 3xx status). */
+export function isRedirectResponse(response: Response): boolean {
+  return response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400);
+}
+
 /**
  * Fetches a RepeaterBook API URL with the app's User-Agent and, when given, the user's token.
  */
@@ -42,7 +50,12 @@ export async function fetchRepeaterBookJson(
   if (apiToken && typeof apiToken === 'string' && apiToken.trim()) {
     headers[REPEATERBOOK_TOKEN_HEADER] = apiToken.trim();
   }
-  const response = await fetchImpl(url, { headers });
+  // RepeaterBook: disable automatic redirects for authenticated requests and treat any 3xx as a
+  // stop condition, so the token is never re-sent to another URL.
+  const response = await fetchImpl(url, { headers, redirect: 'manual' });
+  if (isRedirectResponse(response)) {
+    throw new Error(REDIRECT_STOPPED_MESSAGE);
+  }
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       throw new Error(
