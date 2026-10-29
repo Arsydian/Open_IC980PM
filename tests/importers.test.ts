@@ -207,7 +207,7 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     expect(proxUrl).toContain('lng=-122.4194');
     expect(proxUrl).toContain('dist=35');
     expect(proxUrl).toContain('dunit=mi');
-    expect(proxUrl).toContain('token=test_token');
+    expect(proxUrl).not.toContain('test_token'); // tokens go in a header, never the URL
 
     // 5. Duplicate suppression cache can be cleared
     expect(() => clearRepeaterBookCache()).not.toThrow();

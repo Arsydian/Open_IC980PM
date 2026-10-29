@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { enumerateAserHidDevices } from './hidTransport.js';
 import { readVaultFile, writeVaultFile } from './vaultStore.js';
+import { fetchRepeaterBookJson } from './repeaterBookProxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,21 +24,6 @@ const pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version: stri
 const APP_VERSION = pkgJson.version || '1.0.0';
 
 let mainWindow: BrowserWindow | null = null;
-
-/**
- * Validates that an incoming URL for RepeaterBook proxying is strictly an official HTTPS
- * endpoint on repeaterbook.com to prevent Server-Side Request Forgery (SSRF).
- */
-function isValidRepeaterBookUrl(rawUrl: string): boolean {
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== 'https:') return false;
-    const host = parsed.hostname.toLowerCase();
-    return host === 'www.repeaterbook.com' || host === 'repeaterbook.com';
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Returns the path to the local Rollback Vault JSON store in the user data directory.
@@ -149,33 +135,13 @@ app.whenReady().then(() => {
   });
 
   // Secure RepeaterBook proxy endpoint with strict SSRF defense and app-bound token authentication
-  ipcMain.handle('repeaterbook:fetch', async (_event, url: string, apiToken?: string) => {
-    if (!isValidRepeaterBookUrl(url)) {
-      throw new Error('Access denied: URL must be an official https://www.repeaterbook.com endpoint.');
-    }
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'User-Agent': `Open_IC980PM/${APP_VERSION} (https://github.com/Arsydian/Open_IC980PM; open-source-cps)`,
-    };
-    if (apiToken && typeof apiToken === 'string' && apiToken.trim()) {
-      const cleanToken = apiToken.trim();
-      headers['Authorization'] = `Bearer ${cleanToken}`;
-      headers['X-Api-Key'] = cleanToken;
-    }
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(
-          `RepeaterBook API access denied (HTTP ${response.status}). An approved User-Agent and valid personal app token (rbuapp_...) are required by RepeaterBook.`
-        );
-      }
-      if (response.status === 429) {
-        throw new Error('RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.');
-      }
-      throw new Error(`RepeaterBook API returned HTTP ${response.status}`);
-    }
-    return response.json();
-  });
+  ipcMain.handle('repeaterbook:fetch', async (_event, url: string, apiToken?: string) =>
+    fetchRepeaterBookJson(
+      url,
+      apiToken,
+      `Open_IC980PM/${APP_VERSION} (https://github.com/Arsydian/Open_IC980PM; open-source-cps)`
+    )
+  );
 
   ipcMain.handle('vault:list', () => {
     return readRollbackVault();

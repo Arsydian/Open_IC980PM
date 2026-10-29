@@ -15,6 +15,12 @@ import type { ChannelRecord, RepeaterBandOptions, RepeaterBookQuery, ToneType } 
 import { CTCSS_TONES, DCS_CODES } from './constants';
 import { createEmptyChannel } from './ysfCodec';
 
+/**
+ * Header that carries the user's app-bound `rbuapp_` token. The RepeaterBook API wiki calls it
+ * the preferred header and documents no URL parameter for tokens.
+ */
+export const REPEATERBOOK_TOKEN_HEADER = 'X-RB-App-Token';
+
 /** Supported frequency band identifiers for RepeaterBook classification and filtering. */
 export type RepeaterBandId = '2m' | '70cm' | 'GMRS' | '1.25m' | 'VHF Ext' | 'UHF Ext';
 
@@ -262,10 +268,8 @@ export function buildRepeaterBookApiUrl(query: RepeaterBookQuery): string {
     }
   }
 
-  if (query.apiToken && query.apiToken.trim()) {
-    params.set('token', query.apiToken.trim());
-  }
-
+  // The user's token is never put in the URL (it would end up in logs and history); it is sent
+  // in the X-RB-App-Token header by queryRepeaterBookApi / the Electron proxy instead.
   const qs = params.toString();
   return qs ? `${baseUrl}?${qs}` : baseUrl;
 }
@@ -557,9 +561,7 @@ export async function queryRepeaterBookApi(
       'User-Agent': 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)',
     };
     if (query.apiToken && query.apiToken.trim()) {
-      const cleanToken = query.apiToken.trim();
-      headers['Authorization'] = `Bearer ${cleanToken}`;
-      headers['X-Api-Key'] = cleanToken;
+      headers[REPEATERBOOK_TOKEN_HEADER] = query.apiToken.trim();
     }
     const response = await fetch(url, { headers });
     if (!response.ok) {
