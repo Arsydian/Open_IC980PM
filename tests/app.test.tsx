@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
 import { encodeYsfBuffer, createDefaultCodeplug } from '../src/core/ysfCodec';
 
@@ -20,6 +20,28 @@ function openFile(container: HTMLElement, file: File) {
   const input = container.querySelector('input[type="file"][accept=".ysf,.Ysf,.json"]') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [file] } });
 }
+
+describe('unsaved changes', () => {
+  it('warns before unload and asks before opening a file over edits', { timeout: 30_000 }, async () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<App />);
+
+    // No edits yet: unload is not blocked and opening a file does not ask.
+    expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(true);
+    fireEvent.click(await screen.findByRole('button', { name: /Open File/ }, { timeout: WAIT_MS }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Add Channel/ }));
+    expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /Open File/ }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1); // cancelled: the file picker did not open
+    vi.restoreAllMocks();
+  });
+});
 
 describe('toast banner', () => {
   it('shows a failed file load as an error alert, not a green success', { timeout: 30_000 }, async () => {

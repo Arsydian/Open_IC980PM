@@ -143,6 +143,10 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
   };
 
   const handleDeleteVaultSnapshot = async (id: string) => {
+    const snap = snapshots.find((s) => s.id === id);
+    if (!window.confirm(`Delete the snapshot "${snap?.label ?? id}" from the Rollback Vault? This cannot be undone.`)) {
+      return;
+    }
     const updated = await deleteSnapshotFromVault(id);
     setSnapshots(updated);
   };

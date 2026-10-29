@@ -119,6 +119,15 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
   };
 
   const handleSortActive = (by: 'freq' | 'name') => {
+    const programmed = channels.filter((c) => c.used).length;
+    if (
+      programmed > 1 &&
+      !window.confirm(
+        `Sort all ${programmed} programmed channels by ${by === 'freq' ? 'frequency' : 'name'}? Channels are renumbered from 1.`
+      )
+    ) {
+      return;
+    }
     const active = channels.filter((c) => c.used && c.rxFreqHz > 0);
     if (by === 'freq') {
       active.sort((a, b) => a.rxFreqHz - b.rxFreqHz || a.name.localeCompare(b.name));
@@ -154,10 +163,18 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
   };
 
   const handleClearSelected = () => {
+    const ch = channels[selectedChannelNumber - 1];
+    if (ch?.used && !window.confirm(`Clear channel ${selectedChannelNumber}${ch.name ? ` "${ch.name}"` : ''}?`)) {
+      return;
+    }
     updateSingleChannel(selectedChannelNumber, () => createEmptyChannel(selectedChannelNumber));
   };
 
   const handleClearAllChannels = () => {
+    const programmed = channels.filter((c) => c.used).length;
+    if (programmed > 0 && !window.confirm(`Clear all ${programmed} programmed channels? This cannot be undone.`)) {
+      return;
+    }
     const emptyAll = Array.from({ length: MAX_CHANNELS }, (_, idx) => createEmptyChannel(idx + 1));
     onUpdateChannels(emptyAll);
   };

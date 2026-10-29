@@ -8,7 +8,7 @@
  * 4. Persistent Pre-Write EEPROM Safety Snapshot storage ("Rollback Vault")
  */
 
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +62,23 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  // The renderer blocks unload while there are unsaved edits; Electron would then silently refuse
+  // to close, so ask the user instead.
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(mainWindow!, {
+      type: 'question',
+      buttons: ['Close Without Saving', 'Keep Editing'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Unsaved changes',
+      message: 'You have unsaved changes to the codeplug.',
+      detail: 'Save a .Ysf file or .ic980.json bundle first if you want to keep them.',
+    });
+    if (choice === 0) {
+      event.preventDefault(); // ignore the renderer's beforeunload and close
+    }
   });
 
   // Confine navigation and popups: open external links in default OS browser, never in Electron

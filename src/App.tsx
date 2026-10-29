@@ -6,7 +6,7 @@
  * Boot Logo Studio, RepeaterBook/CHIRP Importer, and Backup/Rollback Vault.
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ListFilter,
   Settings,
@@ -78,6 +78,22 @@ export const App: React.FC = () => {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, kind === 'success' ? 4500 : 9000);
   };
+
+  /** Asks before `action` replaces a codeplug that has unsaved edits; true when it may go ahead. */
+  const confirmReplaceUnsaved = (action: string): boolean =>
+    !hasUnsavedChanges ||
+    window.confirm(`You have unsaved changes. ${action} replaces the codeplug in the editor. Continue?`);
+
+  // Warn before closing or reloading with unsaved edits (Electron asks in main.ts)
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsavedChanges]);
 
   const activeChannelCount = useMemo(
     () => codeplug.channels.filter((c) => c.used && c.rxFreqHz > 0).length,
@@ -218,9 +234,14 @@ export const App: React.FC = () => {
         hasUnsavedChanges={hasUnsavedChanges}
         onOpenImportModal={() => setIsImportModalOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
-        onOpenRadioSync={(mode) => setRadioSyncMode(mode)}
+        onOpenRadioSync={(mode) => {
+          if (mode === 'read' && !confirmReplaceUnsaved('Reading the radio')) return;
+          setRadioSyncMode(mode);
+        }}
         onQuickSaveYsf={handleQuickSaveYsf}
-        onQuickLoadFile={() => quickFileInputRef.current?.click()}
+        onQuickLoadFile={() => {
+          if (confirmReplaceUnsaved('Opening a file')) quickFileInputRef.current?.click();
+        }}
       />
 
       {/* Main Content Area: Left Navigation Rail + Active Workspace */}
@@ -404,6 +425,7 @@ export const App: React.FC = () => {
         codeplug={codeplug}
         onClose={() => setIsBackupModalOpen(false)}
         onRestoreCodeplug={(restored) => {
+          if (!confirmReplaceUnsaved('Restoring')) return;
           setCodeplug(restored);
           setHasUnsavedChanges(false);
           showToast('Restored codeplug configuration.');
