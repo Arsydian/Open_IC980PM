@@ -4,7 +4,7 @@
  * subsection (User Requirement #7).
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Radio,
   Settings,
@@ -34,6 +34,9 @@ import {
 } from '../core/constants';
 import { FileOnlyNote } from './FileOnlyNote';
 
+/** The radio stores the programming password as exactly six digits. */
+const PASSWORD_PATTERN = /^\d{6}$/;
+
 interface GeneralSettingsProps {
   general: GeneralSettingsConfig;
   vfoA: VfoConfig;
@@ -51,6 +54,8 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   onChangeVfoA,
   onChangeVfoB,
 }) => {
+  const [showPassword, setShowPassword] = useState(false);
+
   const renderVfoCard = (
     label: 'VFO A (Upper Band)' | 'VFO B (Lower Band)',
     badgeText: string,
@@ -830,19 +835,40 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               </div>
 
               {general.passwordEnabled && (
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={general.password}
-                  onChange={(e) =>
-                    onChangeGeneral({
-                      ...general,
-                      password: e.target.value.replace(/\D/g, '').slice(0, 6),
-                    })
-                  }
-                  placeholder="6 digits (0-9)"
-                  className="w-36 bg-slate-900 border border-amber-500/50 rounded-lg px-3 py-1.5 font-mono text-center tracking-widest text-amber-300"
-                />
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      aria-label="Programming password"
+                      aria-invalid={!PASSWORD_PATTERN.test(general.password)}
+                      maxLength={6}
+                      value={general.password}
+                      onChange={(e) =>
+                        onChangeGeneral({
+                          ...general,
+                          password: e.target.value.replace(/\D/g, '').slice(0, 6),
+                        })
+                      }
+                      placeholder="6 digits (0-9)"
+                      className="w-36 bg-slate-900 border border-amber-500/50 rounded-lg px-3 py-1.5 font-mono text-center tracking-widest text-amber-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="px-2 py-1.5 rounded-lg text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300"
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {!PASSWORD_PATTERN.test(general.password) && (
+                    <p role="alert" className="text-[11px] text-rose-300">
+                      Needs exactly 6 digits. Writing to the radio is blocked until then.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </div>

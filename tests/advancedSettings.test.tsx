@@ -148,3 +148,39 @@ describe('RF calibration import', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+describe('programming password field', () => {
+  it('is masked, digits only, and says when it is not 6 digits', () => {
+    const cp = createDefaultCodeplug();
+    cp.general.passwordEnabled = true;
+    cp.general.password = '';
+    const latest: { general: RadioCodeplug['general'] } = { general: cp.general };
+    const Harness = () => {
+      const [general, setGeneral] = useState(cp.general);
+      latest.general = general;
+      return (
+        <GeneralSettings
+          general={general}
+          vfoA={cp.vfoA}
+          vfoB={cp.vfoB}
+          onChangeGeneral={setGeneral}
+          onChangeVfoA={() => undefined}
+          onChangeVfoB={() => undefined}
+        />
+      );
+    };
+    render(<Harness />);
+    const input = screen.getByLabelText('Programming password') as HTMLInputElement;
+    expect(input.type).toBe('password');
+
+    fireEvent.change(input, { target: { value: '12a34' } });
+    expect(latest.general.password).toBe('1234');
+    expect(screen.getByRole('alert').textContent).toContain('Needs exactly 6 digits');
+
+    fireEvent.change(input, { target: { value: '123456' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(input.type).toBe('text');
+  });
+});
