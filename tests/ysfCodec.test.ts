@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { YSF_FILE_SIZE, YSF_OFFSETS } from '../src/core/constants';
+import { YSF_FILE_SIZE, YSF_OFFSETS, readFixedAscii, writeFixedAscii } from '../src/core/constants';
 import {
   createDefaultCodeplug,
   createEmptyChannel,
@@ -235,5 +235,19 @@ describe('channel used bitmask', () => {
 
     const cp = decodeYsfBuffer(buf);
     expect(cp.channels.slice(0, 3).map((c) => c.used)).toEqual([true, true, false]);
+  });
+});
+
+describe('fixed-length text fields', () => {
+  it('never cut a multi-byte character in half', () => {
+    const buf = new Uint8Array(20);
+    writeFixedAscii(buf, 0, 'ABCDEFGHIJKLMNOé', 16); // 15 ASCII + 2-byte é = 17 bytes
+    expect(readFixedAscii(buf, 0, 16)).toBe('ABCDEFGHIJKLMNO');
+    expect(buf[15]).toBe(0);
+
+    writeFixedAscii(buf, 0, 'CQ 日本', 16); // fits: 3 + 6 bytes
+    expect(readFixedAscii(buf, 0, 16)).toBe('CQ 日本');
+    writeFixedAscii(buf, 0, 'CQ 日本', 5); // only "CQ " fits whole
+    expect(readFixedAscii(buf, 0, 5)).toBe('CQ');
   });
 });

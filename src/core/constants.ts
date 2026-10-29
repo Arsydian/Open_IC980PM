@@ -443,7 +443,11 @@ export function writeFixedAscii(buf: Uint8Array, offset: number, text: string, m
   buf.fill(0x00, offset, offset + maxLength);
   const encoder = new TextEncoder();
   const encoded = encoder.encode(text);
-  const len = Math.min(encoded.length, maxLength);
+  let len = Math.min(encoded.length, maxLength);
+  // Never cut a multi-byte UTF-8 character in half: back off past continuation bytes (10xxxxxx)
+  while (len > 0 && len < encoded.length && (encoded[len] & 0xc0) === 0x80) {
+    len--;
+  }
   for (let i = 0; i < len; i++) {
     buf[offset + i] = encoded[i];
   }
