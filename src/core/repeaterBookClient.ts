@@ -5,8 +5,10 @@
  *
  * Implements User Requirement #5 & #6:
  * - Selector for North America (`us_ca` -> `export.php`) vs. Rest of World (`row` -> `exportROW.php`)
- * - Option to query by `(State/Province + City/County)` OR `(Lat/Long + Radius)`
- * - Option to limit the returned list to an arbitrary maximum number (`maxResults`)
+ * - Queries use only parameters the RepeaterBook API wiki documents: `state_id` (FIPS) + `city` on
+ *   export.php (plus `stype=gmrs` for GMRS), `country` + `city` on exportROW.php; the radius around
+ *   the city is applied in the app
+ * - Option to limit the returned list to a maximum number (`maxResults`, up to 100)
  * - Automatic filtering to 2m (`144–148 MHz`) & 70cm (`420–450 MHz`) FM Analog repeaters
  * - Channel name formatted as `City - Callsign` (truncated cleanly to 16 characters)
  */
@@ -90,7 +92,10 @@ export interface NormalizedRepeaterCandidate {
   rptrId?: string;
 }
 
-/** North America US State & Canadian Province codes used by RepeaterBook `state_id` parameter. */
+/**
+ * `state_id` values for North America. The RepeaterBook API wiki describes the field as
+ * "State ID (FIPS)": US states use FIPS 5-2 codes, Canadian provinces and territories FIPS 10-4 codes.
+ */
 export const US_CA_STATES: ReadonlyArray<{ id: string; name: string }> = [
   { id: '01', name: 'Alabama (AL)' },
   { id: '02', name: 'Alaska (AK)' },
@@ -153,6 +158,9 @@ export const US_CA_STATES: ReadonlyArray<{ id: string; name: string }> = [
   { id: 'CA09', name: 'Prince Edward Island (PE)' },
   { id: 'CA10', name: 'Quebec (QC)' },
   { id: 'CA11', name: 'Saskatchewan (SK)' },
+  { id: 'CA12', name: 'Yukon (YT)' },
+  { id: 'CA13', name: 'Northwest Territories (NT)' },
+  { id: 'CA14', name: 'Nunavut (NU)' },
 ];
 
 /**
@@ -250,42 +258,50 @@ export function parseRepeaterBookTone(toneStr?: string): { type: ToneType; value
   return { type: 'None', value: CTCSS_TONES[0] };
 }
 
+/** RepeaterBook keeps GMRS repeaters apart from amateur ones; GMRS searches need `stype=gmrs`. */
+export type RepeaterBookService = 'amateur' | 'gmrs';
+
 /**
- * Builds the RepeaterBook API URL for a given `RepeaterBookQuery`.
+ * The RepeaterBook searches a query needs: the amateur search when any amateur or extended band
+ * is enabled, and a separate `stype=gmrs` search when GMRS is enabled (US/Canada only).
  */
-export function buildRepeaterBookApiUrl(query: RepeaterBookQuery): string {
+export function buildRepeaterBookApiUrls(query: RepeaterBookQuery): string[] {
+  const nonGmrsBands: RepeaterBandId[] = ['2m', '70cm', '1.25m', 'VHF Ext', 'UHF Ext'];
+  const urls: string[] = [];
+  if (nonGmrsBands.some((band) => isBandAllowed(band, query.bands))) {
+    urls.push(buildRepeaterBookApiUrl(query, 'amateur'));
+  }
+  if (query.region === 'us_ca' && isBandAllowed('GMRS', query.bands)) {
+    urls.push(buildRepeaterBookApiUrl(query, 'gmrs'));
+  }
+  return urls;
+}
+
+/**
+ * Builds the RepeaterBook API URL for a given `RepeaterBookQuery` and service.
+ */
+export function buildRepeaterBookApiUrl(query: RepeaterBookQuery, service: RepeaterBookService = 'amateur'): string {
   const baseUrl =
     query.region === 'row'
       ? 'https://www.repeaterbook.com/api/exportROW.php'
       : 'https://www.repeaterbook.com/api/export.php';
 
+  // Only parameters the RepeaterBook API wiki documents for each endpoint:
+  //   export.php:    state_id (FIPS), city, stype (required for GMRS searches)
+  //   exportROW.php: country, city
   const params = new URLSearchParams();
-
-  if (
-    query.searchMode === 'proximity' &&
-    typeof query.latitude === 'number' &&
-    typeof query.longitude === 'number' &&
-    Number.isFinite(query.latitude) &&
-    Number.isFinite(query.longitude)
-  ) {
-    // Native RepeaterBook Proximity Search (qtype=prox)
-    params.set('qtype', 'prox');
-    params.set('lat', query.latitude.toString());
-    params.set('lng', query.longitude.toString());
-    const radius = query.radius && query.radius > 0 ? query.radius : 35;
-    params.set('dist', radius.toString());
-    params.set('dunit', query.distanceUnit === 'km' ? 'km' : 'mi');
-  } else {
-    // Location / Regional Search (State/Province or Country + City)
+  if (query.region === 'row') {
     if (query.country && query.country.trim()) {
       params.set('country', query.country.trim());
     }
-    if (query.state && query.state.trim()) {
-      params.set('state_id', query.state.trim());
-    }
-    if (query.city && query.city.trim()) {
-      params.set('city', query.city.trim());
-    }
+  } else if (query.state && query.state.trim()) {
+    params.set('state_id', query.state.trim());
+  }
+  if (query.city && query.city.trim()) {
+    params.set('city', query.city.trim());
+  }
+  if (service === 'gmrs' && query.region === 'us_ca') {
+    params.set('stype', 'gmrs');
   }
 
   // The user's token is never put in the URL (it would end up in logs and history); it is sent
@@ -383,13 +399,12 @@ export function filterAndNormalizeRepeaterBookResults(
         : query.radius
       : undefined;
 
-  const cityFilter =
-    query.searchMode === 'location' && query.city ? query.city.trim().toLowerCase() : '';
+  const cityFilter = query.city ? query.city.trim().toLowerCase() : '';
 
-  // In location mode with a city, find the center coordinates of that city to anchor the radius filter
+  // With a city, find the center coordinates of that city to anchor the radius filter
   let cityCenterLat: number | undefined;
   let cityCenterLon: number | undefined;
-  if (query.searchMode === 'location' && cityFilter) {
+  if (cityFilter) {
     let sumLat = 0;
     let sumLon = 0;
     let count = 0;
@@ -455,19 +470,7 @@ export function filterAndNormalizeRepeaterBookResults(
 
     let distanceMiles: number | undefined;
 
-    if (
-      query.searchMode === 'proximity' &&
-      typeof query.latitude === 'number' &&
-      typeof query.longitude === 'number' &&
-      Number.isFinite(query.latitude) &&
-      Number.isFinite(query.longitude)
-    ) {
-      if (!hasCoords) continue;
-      distanceMiles = computeHaversineMiles(query.latitude, query.longitude, rLat, rLon);
-      if (maxRadiusMiles !== undefined && distanceMiles > maxRadiusMiles) {
-        continue;
-      }
-    } else if (query.searchMode === 'location' && cityFilter) {
+    if (cityFilter) {
       if (cityCenterLat !== undefined && cityCenterLon !== undefined && hasCoords) {
         distanceMiles = computeHaversineMiles(cityCenterLat, cityCenterLon, rLat, rLon);
         if (maxRadiusMiles !== undefined && distanceMiles > maxRadiusMiles) {
@@ -541,7 +544,7 @@ export function filterAndNormalizeRepeaterBookResults(
   }
 
   // Sort by distance if distance was computed, otherwise by city then frequency
-  if (query.searchMode === 'proximity' || (query.searchMode === 'location' && cityCenterLat !== undefined)) {
+  if (cityCenterLat !== undefined) {
     candidates.sort((a, b) => (a.distanceMiles ?? 99999) - (b.distanceMiles ?? 99999));
   } else {
     candidates.sort((a, b) => a.city.localeCompare(b.city) || a.rxFreqHz - b.rxFreqHz);
@@ -597,28 +600,36 @@ export function clearRepeaterBookCache(): void {
 export async function queryRepeaterBookApi(
   query: RepeaterBookQuery
 ): Promise<NormalizedRepeaterCandidate[]> {
-  const url = buildRepeaterBookApiUrl(query);
-  const cacheKey = `${url}|${query.apiToken || ''}`;
-
-  const cached = queryCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < REPEATERBOOK_CACHE_TTL_MS) {
-    return filterAndNormalizeRepeaterBookResults(cached.data, query);
-  }
-
   if (!isRepeaterBookAvailable()) {
     throw new Error(REPEATERBOOK_DESKTOP_ONLY_MESSAGE);
   }
-  const jsonPayload: unknown = await window.api!.fetchRepeaterBookJson(url, query.apiToken);
 
-  const rawArray: RepeaterBookRawEntry[] = Array.isArray(
-    (jsonPayload as { results?: RepeaterBookRawEntry[] })?.results
-  )
-    ? (jsonPayload as { results: RepeaterBookRawEntry[] }).results
-    : Array.isArray(jsonPayload)
-    ? (jsonPayload as RepeaterBookRawEntry[])
-    : [];
+  // One request per needed search (amateur, and GMRS via stype=gmrs), made one after another
+  const combined: RepeaterBookRawEntry[] = [];
+  const seen = new Set<string>();
+  for (const url of buildRepeaterBookApiUrls(query)) {
+    const cacheKey = `${url}|${query.apiToken || ''}`;
+    const cached = queryCache.get(cacheKey);
+    let rawArray: RepeaterBookRawEntry[];
+    if (cached && Date.now() - cached.timestamp < REPEATERBOOK_CACHE_TTL_MS) {
+      rawArray = cached.data;
+    } else {
+      const jsonPayload: unknown = await window.api!.fetchRepeaterBookJson(url, query.apiToken);
+      rawArray = Array.isArray((jsonPayload as { results?: RepeaterBookRawEntry[] })?.results)
+        ? (jsonPayload as { results: RepeaterBookRawEntry[] }).results
+        : Array.isArray(jsonPayload)
+        ? (jsonPayload as RepeaterBookRawEntry[])
+        : [];
+      cacheResponse(cacheKey, rawArray, Date.now());
+    }
+    for (const entry of rawArray) {
+      const key = `${entry['State ID'] ?? ''}|${entry['Rptr ID'] ?? ''}|${entry.Frequency ?? ''}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        combined.push(entry);
+      }
+    }
+  }
 
-  cacheResponse(cacheKey, rawArray, Date.now());
-
-  return filterAndNormalizeRepeaterBookResults(rawArray, query);
+  return filterAndNormalizeRepeaterBookResults(combined, query);
 }

@@ -8,6 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRepeaterBookApiUrl,
+  buildRepeaterBookApiUrls,
+  US_CA_STATES,
   cityMatchesFilter,
   clearRepeaterBookCache,
   filterAndNormalizeRepeaterBookResults,
@@ -105,12 +107,10 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
       },
     ];
 
-    // 1. Proximity search with maxResults = 2
+    // 1. City + radius search with maxResults = 2 (nearest first)
     const proxResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
-      searchMode: 'proximity',
-      latitude: 37.7749,
-      longitude: -122.4194,
+      city: 'San Francisco',
       radius: 25,
       distanceUnit: 'miles',
       maxResults: 2,
@@ -128,7 +128,6 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     // 2. Arbitrary maxResults = 1 limit
     const limited = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
-      searchMode: 'location',
       maxResults: 1,
     });
     expect(limited.length).toBe(1);
@@ -136,7 +135,6 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     // 3. Verifies that non-2m/70cm frequencies (e.g. GMRS or 1.2GHz) are strictly filtered out by default
     const nonAmateurResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
-      searchMode: 'location',
       city: 'San Francisco',
       radius: 35,
       maxResults: 10,
@@ -147,7 +145,6 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     // 3b. Verifies that GMRS and out-of-band repeaters are included when enabled in advanced bands
     const gmrsEnabledResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
-      searchMode: 'location',
       city: 'Vacaville',
       radius: 10,
       maxResults: 10,
@@ -165,9 +162,7 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     // 3c. Verifies selective band filtering (e.g. 70cm only, excluding 2m)
     const uhfOnlyResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
-      searchMode: 'proximity',
-      latitude: 37.7749,
-      longitude: -122.4194,
+      city: 'San Francisco',
       radius: 25,
       maxResults: 10,
       bands: {
@@ -182,7 +177,6 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     // 4. City + Radius filtering in State/Jurisdiction location mode
     const cityRadiusResults = filterAndNormalizeRepeaterBookResults(sampleRaw, {
       region: 'us_ca',
-      searchMode: 'location',
       city: 'San Francisco',
       radius: 15,
       distanceUnit: 'miles',
@@ -192,23 +186,9 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     expect(cityRadiusResults[0].callsign).toBe('W6PW');
     expect(cityRadiusResults[0].distanceMiles).toBeDefined();
 
-    // 4. Native proximity query parameter builder
-    const proxUrl = buildRepeaterBookApiUrl({
-      region: 'us_ca',
-      searchMode: 'proximity',
-      latitude: 37.7749,
-      longitude: -122.4194,
-      radius: 35,
-      distanceUnit: 'miles',
-      maxResults: 50,
-      apiToken: 'test_token',
-    });
-    expect(proxUrl).toContain('qtype=prox');
-    expect(proxUrl).toContain('lat=37.7749');
-    expect(proxUrl).toContain('lng=-122.4194');
-    expect(proxUrl).toContain('dist=35');
-    expect(proxUrl).toContain('dunit=mi');
-    expect(proxUrl).not.toContain('test_token'); // tokens go in a header, never the URL
+    // 4. Query URLs carry only parameters documented by the RepeaterBook API wiki (see below)
+    const url = buildRepeaterBookApiUrl({ region: 'us_ca', state: '06', city: 'San Francisco', maxResults: 50, apiToken: 'test_token' });
+    expect(url).not.toContain('test_token'); // tokens go in a header, never the URL
 
     // 5. Duplicate suppression cache can be cleared
     expect(() => clearRepeaterBookCache()).not.toThrow();
@@ -318,7 +298,6 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
 describe('RepeaterBook city search', () => {
   const nashvilleQuery = {
     region: 'us_ca' as const,
-    searchMode: 'location' as const,
     state: '47',
     city: 'Nashville',
     radius: 25,
@@ -411,5 +390,70 @@ describe('insert_at renumbering', () => {
     const incoming = parseChirpOrCpsCsv('Name,Frequency\nNEW,146.52');
     const { renumbering } = mergeImportedChannels(existing, incoming, 'insert_at', 2);
     expect([...renumbering]).toEqual([[2, 3], [3, 4]]);
+  });
+});
+
+describe('RepeaterBook query parameters (documented on the API wiki)', () => {
+  const documented = {
+    'https://www.repeaterbook.com/api/export.php': ['state_id', 'city', 'stype', 'callsign', 'landmark', 'country', 'county', 'frequency', 'mode', 'emcomm'],
+    'https://www.repeaterbook.com/api/exportROW.php': ['country', 'city', 'callsign', 'landmark', 'region', 'frequency', 'mode'],
+  } as const;
+  const paramsOf = (url: string) => {
+    const u = new URL(url);
+    return { endpoint: u.origin + u.pathname, params: Object.fromEntries(u.searchParams) };
+  };
+
+  it('North America: state_id (FIPS) and city on export.php', () => {
+    const { endpoint, params } = paramsOf(
+      buildRepeaterBookApiUrl({ region: 'us_ca', state: '47', city: 'Nashville', country: 'United States', radius: 25, maxResults: 50 })
+    );
+    expect(endpoint).toBe('https://www.repeaterbook.com/api/export.php');
+    expect(params).toEqual({ state_id: '47', city: 'Nashville' });
+  });
+
+  it('Canada uses the FIPS 10-4 province code as state_id', () => {
+    const { params } = paramsOf(buildRepeaterBookApiUrl({ region: 'us_ca', state: 'CA08', city: 'Ottawa', maxResults: 50 }));
+    expect(params).toEqual({ state_id: 'CA08', city: 'Ottawa' });
+    expect(US_CA_STATES.filter((s) => s.id.startsWith('CA')).map((s) => s.id)).toEqual([
+      'CA01', 'CA02', 'CA03', 'CA04', 'CA05', 'CA07', 'CA08', 'CA09', 'CA10', 'CA11', 'CA12', 'CA13', 'CA14',
+    ]);
+  });
+
+  it('Rest of world: country and city on exportROW.php, never state_id', () => {
+    const { endpoint, params } = paramsOf(
+      buildRepeaterBookApiUrl({ region: 'row', country: 'Switzerland', state: '06', city: 'Zurich', maxResults: 50 })
+    );
+    expect(endpoint).toBe('https://www.repeaterbook.com/api/exportROW.php');
+    expect(params).toEqual({ country: 'Switzerland', city: 'Zurich' });
+  });
+
+  it('GMRS uses a separate stype=gmrs search, only when GMRS is enabled', () => {
+    const base = { region: 'us_ca' as const, state: '06', city: 'Vacaville', maxResults: 50 };
+    expect(buildRepeaterBookApiUrls(base).map((u) => paramsOf(u).params)).toEqual([{ state_id: '06', city: 'Vacaville' }]);
+    expect(
+      buildRepeaterBookApiUrls({ ...base, bands: { include2m: true, include70cm: true, includeGmrs: true } }).map((u) => paramsOf(u).params)
+    ).toEqual([
+      { state_id: '06', city: 'Vacaville' },
+      { state_id: '06', city: 'Vacaville', stype: 'gmrs' },
+    ]);
+    expect(
+      buildRepeaterBookApiUrls({ ...base, bands: { include2m: false, include70cm: false, includeGmrs: true } }).map((u) => paramsOf(u).params)
+    ).toEqual([{ state_id: '06', city: 'Vacaville', stype: 'gmrs' }]);
+    // stype is not an exportROW.php parameter
+    expect(buildRepeaterBookApiUrls({ region: 'row', country: 'Germany', city: 'Berlin', maxResults: 50, bands: { includeGmrs: true } }))
+      .toEqual(['https://www.repeaterbook.com/api/exportROW.php?country=Germany&city=Berlin']);
+  });
+
+  it('never sends undocumented parameters', () => {
+    const urls = [
+      buildRepeaterBookApiUrl({ region: 'us_ca', state: '06', city: 'X', radius: 35, distanceUnit: 'km', maxResults: 100, apiToken: 't' }),
+      buildRepeaterBookApiUrl({ region: 'us_ca', state: '06', city: 'X', maxResults: 100 }, 'gmrs'),
+      buildRepeaterBookApiUrl({ region: 'row', country: 'Japan', city: 'X', maxResults: 100 }),
+    ];
+    for (const url of urls) {
+      const { endpoint, params } = paramsOf(url);
+      const allowed: readonly string[] = documented[endpoint as keyof typeof documented];
+      expect(Object.keys(params).filter((p) => !allowed.includes(p))).toEqual([]);
+    }
   });
 });

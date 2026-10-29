@@ -30,7 +30,6 @@ const TOKEN = 'rbuapp_secret123';
 
 const query: RepeaterBookQuery = {
   region: 'us_ca',
-  searchMode: 'location',
   state: '47',
   city: 'Nashville',
   radius: 25,
@@ -74,6 +73,23 @@ describe('RepeaterBook client', () => {
     expect(url).toMatch(/^https:\/\/www\.repeaterbook\.com\/api\/export\.php\?/);
     expect(url).not.toContain(TOKEN);
     expect(token).toBe(TOKEN);
+  });
+
+  it('makes a separate stype=gmrs search for GMRS and merges the results once', async () => {
+    const amateur = { 'State ID': '06', 'Rptr ID': '1', Frequency: '146.9400', 'Nearest City': 'Vacaville', Lat: '38.35', Long: '-121.98', Callsign: 'W6AAA' };
+    const gmrs = { 'State ID': '06', 'Rptr ID': '9', Frequency: '462.6750', 'Input Freq': '467.6750', 'Nearest City': 'Vacaville', Lat: '38.36', Long: '-121.97', Callsign: 'WRGMRS' };
+    const fetchRepeaterBookJson = vi.fn(async (url: string) => ({ results: url.includes('stype=gmrs') ? [gmrs, amateur] : [amateur] }));
+    vi.stubGlobal('window', { api: { fetchRepeaterBookJson } });
+
+    const results = await queryRepeaterBookApi({
+      ...query,
+      state: '06',
+      city: 'Vacaville',
+      bands: { include2m: true, include70cm: true, includeGmrs: true },
+    });
+
+    expect(fetchRepeaterBookJson.mock.calls.map((c) => new URL(c[0] as string).searchParams.get('stype'))).toEqual([null, 'gmrs']);
+    expect(results.map((r) => r.callsign).sort()).toEqual(['W6AAA', 'WRGMRS']);
   });
 
   it('serves a repeated query from cache and keeps at most 20 queries', async () => {

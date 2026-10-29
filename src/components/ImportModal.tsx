@@ -2,7 +2,7 @@
  * @file src/components/ImportModal.tsx
  * @description Unified Channel Import Studio for Open_IC980PM:
  * 1. Live RepeaterBook API Importer (US/Canada `export.php` & RoW `exportROW.php`,
- *    State/Province+City OR Lat/Long+Radius, arbitrary Max Results limit, automatic
+ *    State/Province or Country + City + radius, Max Results up to 100, GMRS via `stype=gmrs`, automatic
  *    2m/70cm FM Analog filter, and `City - Callsign` channel naming).
  * 2. CHIRP / Factory CPS CSV File & Clipboard Importer.
  * 3. Built-in Curated Quick-Packs (NOAA Weather WX 1–7 with hardware NOAA bit, GMRS, FRS, Marine, Ham Calling).
@@ -14,8 +14,6 @@ import { useDialogA11y } from './useDialogA11y';
 import {
   X,
   Globe,
-  MapPin,
-  Navigation,
   FileSpreadsheet,
   Sparkles,
   Search,
@@ -84,12 +82,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   // RepeaterBook Query State (User Requirement #5)
   const [region, setRegion] = useState<'us_ca' | 'row'>('us_ca');
-  const [searchMode, setSearchMode] = useState<'location' | 'proximity'>('location');
   const [stateId, setStateId] = useState<string>('06'); // Default California
   const [rowCountry, setRowCountry] = useState<string>('United Kingdom');
   const [cityFilter, setCityFilter] = useState<string>('');
-  const [latitude, setLatitude] = useState<string>('37.7749');
-  const [longitude, setLongitude] = useState<string>('-122.4194');
   const [radius, setRadius] = useState<string>('35');
   const [distanceUnit, setDistanceUnit] = useState<'miles' | 'km'>('miles');
   const [maxResults, setMaxResults] = useState<string>('50');
@@ -141,18 +136,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setIsLoadingRb(true);
     setRbError(null);
 
-    if (searchMode === 'location') {
-      if (!cityFilter.trim()) {
-        setRbError('City is required for state/jurisdiction queries to anchor the search and limit query size.');
-        setIsLoadingRb(false);
-        return;
-      }
-      const parsedRadius = parseFloat(radius);
-      if (!Number.isFinite(parsedRadius) || parsedRadius <= 0) {
-        setRbError('A search radius is required to constrain the query around the selected city.');
-        setIsLoadingRb(false);
-        return;
-      }
+    if (!cityFilter.trim()) {
+      setRbError('City is required for state/jurisdiction queries to anchor the search and limit query size.');
+      setIsLoadingRb(false);
+      return;
+    }
+    const parsedRadius = parseFloat(radius);
+    if (!Number.isFinite(parsedRadius) || parsedRadius <= 0) {
+      setRbError('A search radius is required to constrain the query around the selected city.');
+      setIsLoadingRb(false);
+      return;
     }
 
     if (!include2m && !include70cm && !includeGmrs && !include125m && !includeVhfExt && !includeUhfExt) {
@@ -165,13 +158,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       const parsedMax = Math.max(1, Math.min(100, parseInt(maxResults, 10) || 50));
       const query: RepeaterBookQuery = {
         region,
-        searchMode,
         country: region === 'row' ? rowCountry.trim() : undefined,
         state: region === 'us_ca' ? stateId : undefined,
-        city: searchMode === 'location' ? cityFilter.trim() : undefined,
-        latitude: searchMode === 'proximity' ? parseFloat(latitude) : undefined,
-        longitude: searchMode === 'proximity' ? parseFloat(longitude) : undefined,
-        radius: parseFloat(radius) || 35,
+        city: cityFilter.trim(),
+        radius: parsedRadius,
         distanceUnit,
         maxResults: parsedMax,
         openOnly,
@@ -484,8 +474,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 onSubmit={handleSearchRepeaterBook}
                 className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-4"
               >
-                {/* Row 1: Region Selector (US/CA vs RoW) & Search Mode Toggle (State/City vs Lat/Long+Radius) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Row 1: Region Selector (US/CA vs RoW) & Max Results */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Region Selector */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5">
@@ -517,46 +507,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Query Mode Toggle */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      2. Search Method
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => setSearchMode('location')}
-                        className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded text-xs font-medium transition-colors ${
-                          searchMode === 'location'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <MapPin className="w-3 h-3" />
-                        <span>State & City</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSearchMode('proximity')}
-                        className={`inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded text-xs font-medium transition-colors ${
-                          searchMode === 'proximity'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <Navigation className="w-3 h-3" />
-                        <span>Lat/Long + Radius</span>
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Max Results Limit (User Requirement #5) */}
                   <div>
                     <label
                       htmlFor="rb-max-results"
                       className="block text-xs font-semibold text-slate-300 mb-1.5"
                     >
-                      3. Limit Max Results (up to 100)
+                      2. Limit Max Results (up to 100)
                     </label>
                     <div className="flex items-center gap-2">
                       <input
@@ -609,118 +566,49 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </div>
                   )}
 
-                  {searchMode === 'location' ? (
-                    <>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">
-                          City / Town * <span className="text-cyan-400 text-[10px]">(Required)</span>
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={cityFilter}
-                          onChange={(e) => setCityFilter(e.target.value)}
-                          placeholder="e.g. San Francisco, Dallas, Seattle..."
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">
-                          Search Radius * <span className="text-cyan-400 text-[10px]">(Required)</span>
-                        </label>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            required
-                            min={1}
-                            max={300}
-                            value={radius}
-                            onChange={(e) => setRadius(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
-                          />
-                          <select
-                            value={distanceUnit}
-                            onChange={(e) => setDistanceUnit(e.target.value as 'miles' | 'km')}
-                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200"
-                          >
-                            <option value="miles">mi</option>
-                            <option value="km">km</option>
-                          </select>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">
-                          Center Latitude *
-                        </label>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        City / Town * <span className="text-cyan-400 text-[10px]">(Required)</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={cityFilter}
+                        onChange={(e) => setCityFilter(e.target.value)}
+                        placeholder="e.g. San Francisco, Dallas, Seattle..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Search Radius * <span className="text-cyan-400 text-[10px]">(Required)</span>
+                      </label>
+                      <div className="flex items-center gap-1">
                         <input
                           type="number"
-                          step="any"
                           required
-                          value={latitude}
-                          onChange={(e) => setLatitude(e.target.value)}
-                          placeholder="37.7749"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
+                          min={1}
+                          max={300}
+                          value={radius}
+                          onChange={(e) => setRadius(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
                         />
+                        <select
+                          value={distanceUnit}
+                          onChange={(e) => setDistanceUnit(e.target.value as 'miles' | 'km')}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200"
+                        >
+                          <option value="miles">mi</option>
+                          <option value="km">km</option>
+                        </select>
                       </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">
-                          Center Longitude *
-                        </label>
-                        <input
-                          type="number"
-                          step="any"
-                          required
-                          value={longitude}
-                          onChange={(e) => setLongitude(e.target.value)}
-                          placeholder="-122.4194"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">
-                          Search Radius *
-                        </label>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            required
-                            min={1}
-                            max={500}
-                            value={radius}
-                            onChange={(e) => setRadius(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none"
-                          />
-                          <select
-                            value={distanceUnit}
-                            onChange={(e) => setDistanceUnit(e.target.value as 'miles' | 'km')}
-                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200"
-                          >
-                            <option value="miles">mi</option>
-                            <option value="km">km</option>
-                          </select>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {searchMode === 'location' && (
-                    <div className="md:col-span-4 -mt-1">
-                      <p className="text-[11px] text-slate-400 italic">
-                        * City and radius are required to anchor the search and constrain query size around your local area.
-                      </p>
                     </div>
-                  )}
 
-                  {searchMode === 'proximity' && (
-                    <div className="md:col-span-4 -mt-1">
-                      <p className="text-[11px] text-slate-400 italic">
-                        * Proximity radius queries coordinates natively across state and regional borders.
-                      </p>
-                    </div>
-                  )}
+                  <div className="md:col-span-4 -mt-1">
+                    <p className="text-[11px] text-slate-400 italic">
+                      * City and radius are required to anchor the search and constrain query size around your local area.
+                    </p>
+                  </div>
 
                   {cooldownSeconds > 0 && (
                     <div className="md:col-span-4 p-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2">
@@ -944,7 +832,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                           <th className="py-2 px-3">Input (TX)</th>
                           <th className="py-2 px-3">PL / TSQ</th>
                           <th className="py-2 px-3">City / State</th>
-                          {searchMode === 'proximity' && <th className="py-2 px-3">Distance</th>}
+                          <th className="py-2 px-3">Distance</th>
                           <th className="py-2 px-3 w-16 text-center">Listing</th>
                         </tr>
                       </thead>
@@ -1004,11 +892,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                               <td className="py-2 px-3 font-sans text-slate-400">
                                 {item.city}, {item.state}
                               </td>
-                              {searchMode === 'proximity' && (
-                                <td className="py-2 px-3 text-amber-300">
-                                  {item.distanceMiles !== undefined ? `${item.distanceMiles} mi` : '—'}
-                                </td>
-                              )}
+                              <td className="py-2 px-3 text-amber-300">
+                                {item.distanceMiles !== undefined ? `${item.distanceMiles} mi` : '—'}
+                              </td>
                               <td className="py-2 px-3 text-center">
                                 {item.detailUrl && (
                                   <a

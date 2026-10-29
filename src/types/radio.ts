@@ -386,21 +386,15 @@ export interface RepeaterBandOptions {
  * RepeaterBook API Query Parameters (User Requirement #5).
  */
 export interface RepeaterBookQuery {
-  /** Region selector: North America (`us_ca`) or Rest of World (`row`) */
+  /** Region selector: North America (`us_ca`, `api/export.php`) or Rest of World (`row`, `api/exportROW.php`) */
   region: 'us_ca' | 'row';
-  /** Search mode: `location` (State/Province + City/County) or `proximity` (Lat/Long + Radius) */
-  searchMode: 'location' | 'proximity';
-  /** Country (for RoW or US/Canada) */
+  /** Country name (`row` only), sent as `country` */
   country?: string;
-  /** State / Province ID or name */
+  /** State / Province FIPS code (`us_ca` only), sent as `state_id` */
   state?: string;
-  /** City or County filter */
+  /** City name, sent as `city`; also anchors the radius filter */
   city?: string;
-  /** Center Latitude in decimal degrees (for `proximity` mode) */
-  latitude?: number;
-  /** Center Longitude in decimal degrees (for `proximity` mode) */
-  longitude?: number;
-  /** Search radius (for `proximity` mode) */
+  /** Search radius around the city, applied to the results in the app */
   radius?: number;
   /** Distance unit (`miles` or `km`) */
   distanceUnit?: 'miles' | 'km';
