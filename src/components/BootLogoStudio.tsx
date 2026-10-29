@@ -23,6 +23,20 @@ import {
 } from '../core/bmpLogoCodec';
 import { flashBootLogoViaWebHid } from '../core/webHidTransport';
 
+/** Longest boot-screen title: the radio callsign field holds 14 characters. */
+export const BOOT_LOGO_TITLE_MAX = 14;
+
+/**
+ * Largest font size (px) from `maxPx` down to `minPx` at which `measureAt(px)` (the text width)
+ * fits in `maxWidth`, so text is shrunk to fit the 160 px screen instead of being cut off.
+ */
+export function fitFontPx(measureAt: (px: number) => number, maxWidth: number, maxPx: number, minPx: number): number {
+  for (let px = maxPx; px > minPx; px--) {
+    if (measureAt(px) <= maxWidth) return px;
+  }
+  return minPx;
+}
+
 interface BootLogoStudioProps {
   defaultCallsign: string;
 }
@@ -36,6 +50,8 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
   const [flashStatus, setFlashStatus] = useState<string | null>(null);
   const [flashError, setFlashError] = useState<string | null>(null);
   const [isFlashing, setIsFlashing] = useState(false);
+  // While an uploaded image is shown, title/subtitle/theme edits must not repaint over it
+  const [usingUploadedImage, setUsingUploadedImage] = useState(false);
 
   const quantizeCanvasToRgb565 = () => {
     const canvas = canvasRef.current;
@@ -86,15 +102,27 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
     ctx.textAlign = 'center';
     ctx.fillText('HIROYASU IC-980PM', BOOT_LOGO_WIDTH / 2, 21);
 
-    // Main Callsign / Title
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 20px monospace';
-    ctx.fillText((badgeTitle || 'OPEN_IC980').slice(0, 12), BOOT_LOGO_WIDTH / 2, 68);
+    // Main Callsign / Title and Subtitle, shrunk to fit inside the frame rather than cut off
+    const textWidth = BOOT_LOGO_WIDTH - 20;
+    const drawFitted = (text: string, style: string, family: string, maxPx: number, minPx: number, y: number) => {
+      const px = fitFontPx(
+        (size) => {
+          ctx.font = `${style} ${size}px ${family}`;
+          return ctx.measureText(text).width;
+        },
+        textWidth,
+        maxPx,
+        minPx
+      );
+      ctx.font = `${style} ${px}px ${family}`;
+      ctx.fillText(text, BOOT_LOGO_WIDTH / 2, y);
+    };
 
-    // Subtitle
+    ctx.fillStyle = '#f8fafc';
+    drawFitted((badgeTitle || 'OPEN_IC980').slice(0, BOOT_LOGO_TITLE_MAX), 'bold', 'monospace', 20, 10, 68);
+
     ctx.fillStyle = accentHex;
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText((badgeSubtitle || '136-174 / 400-480').slice(0, 18), BOOT_LOGO_WIDTH / 2, 92);
+    drawFitted((badgeSubtitle || '136-174 / 400-480').slice(0, 18), 'bold', 'sans-serif', 11, 7, 92);
 
     // Bottom status line
     ctx.fillStyle = '#94a3b8';
@@ -105,8 +133,10 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
   };
 
   useEffect(() => {
-    renderCallsignWallpaper();
-  }, [badgeTitle, badgeSubtitle, themeColor]);
+    if (!usingUploadedImage) {
+      renderCallsignWallpaper();
+    }
+  }, [badgeTitle, badgeSubtitle, themeColor, usingUploadedImage]);
 
   const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,6 +154,7 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
         ctx.fillRect(0, 0, BOOT_LOGO_WIDTH, BOOT_LOGO_HEIGHT);
         ctx.drawImage(img, 0, 0, BOOT_LOGO_WIDTH, BOOT_LOGO_HEIGHT);
         quantizeCanvasToRgb565();
+        setUsingUploadedImage(true);
       };
       img.src = reader.result;
     };
@@ -245,6 +276,7 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
               <span>Select Image File...</span>
               <input
                 type="file"
+                aria-label="Boot logo image file"
                 accept="image/bmp,image/png,image/jpeg,image/webp"
                 onChange={handleUploadImage}
                 className="hidden"
@@ -259,12 +291,26 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
               <span>Option 2: Callsign Boot Screen Generator</span>
             </h3>
 
+            {usingUploadedImage && (
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-200">
+                <span>The preview shows your uploaded image. Changes below apply once you switch back.</span>
+                <button
+                  type="button"
+                  onClick={() => setUsingUploadedImage(false)}
+                  className="px-3 py-1.5 rounded-lg font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200"
+                >
+                  Use callsign design
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
                 <label className="block text-slate-400 mb-1">Primary Callsign / Title</label>
                 <input
                   type="text"
-                  maxLength={12}
+                  aria-label="Boot screen title"
+                  maxLength={BOOT_LOGO_TITLE_MAX}
                   value={badgeTitle}
                   onChange={(e) => setBadgeTitle(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100"
