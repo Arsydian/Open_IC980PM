@@ -9,6 +9,7 @@ import {
   applyTxFrequencyEdit,
   formatMhzInput,
   parseMhzInput,
+  toneValueForType,
 } from '../src/core/channelEdit';
 import { createEmptyChannel } from '../src/core/ysfCodec';
 
@@ -56,6 +57,20 @@ describe('applyRxFrequencyEdit', () => {
   it('falls back to simplex if keeping the offset would give a non-positive TX', () => {
     const ch = applyRxFrequencyEdit(programmed(446_000_000, 146_000_000), 100_000_000);
     expect(ch.txFreqHz).toBe(100_000_000);
+  });
+});
+
+describe('toneValueForType', () => {
+  it('replaces a value that is invalid for the new tone type with a standard one', () => {
+    expect(toneValueForType('DCS_N', 88.5)).toBe(23);
+    expect(toneValueForType('DCS_I', 100.0)).toBe(23);
+    expect(toneValueForType('CTCSS', 23)).toBe(100.0);
+  });
+
+  it('keeps a value that is already valid for the new type', () => {
+    expect(toneValueForType('CTCSS', 88.5)).toBe(88.5);
+    expect(toneValueForType('DCS_I', 754)).toBe(754);
+    expect(toneValueForType('None', 88.5)).toBe(88.5);
   });
 });
 

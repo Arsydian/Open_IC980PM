@@ -19,6 +19,28 @@ const BAND_LIMIT_MIN_MHZ = 18.0;
 const BAND_LIMIT_MAX_MHZ = 999.0;
 
 /**
+ * Applies one band-limit edit if the result is representable and ordered (min below max),
+ * otherwise returns why it was refused so the editor can keep the previous value.
+ */
+export function applyBandLimitEdit(
+  limits: BandLimitsConfig,
+  field: keyof BandLimitsConfig,
+  mhz: number
+): { limits: BandLimitsConfig } | { error: string } {
+  if (!Number.isFinite(mhz) || mhz < BAND_LIMIT_MIN_MHZ || mhz > BAND_LIMIT_MAX_MHZ) {
+    return { error: `Band limits must be between ${BAND_LIMIT_MIN_MHZ} and ${BAND_LIMIT_MAX_MHZ} MHz.` };
+  }
+  const next = { ...limits, [field]: mhz };
+  if (next.vhfMinMhz >= next.vhfMaxMhz) {
+    return { error: `VHF minimum (${next.vhfMinMhz} MHz) must be below VHF maximum (${next.vhfMaxMhz} MHz).` };
+  }
+  if (next.uhfMinMhz >= next.uhfMaxMhz) {
+    return { error: `UHF minimum (${next.uhfMinMhz} MHz) must be below UHF maximum (${next.uhfMaxMhz} MHz).` };
+  }
+  return { limits: next };
+}
+
+/**
  * Checks whether a frequency in Hz falls within the configured VHF or UHF band limits.
  * Non-positive frequencies (empty fields) are treated as in band.
  */
@@ -41,6 +63,19 @@ function toneProblem(type: ToneType, value: number): string | null {
   }
   if ((type === 'DCS_N' || type === 'DCS_I') && !DCS_CODES.includes(value)) {
     return `D${String(value).padStart(3, '0')} is not a valid DCS code`;
+  }
+  return null;
+}
+
+/** Largest custom subaudio value the radio's 16-bit channel tone word can hold. */
+export const MAX_RADIO_CUSTOM_SUBAUDIO = 0xffff;
+
+function customSubaudioProblem(hex: string): string | null {
+  if (!/^[0-9A-Fa-f]{1,8}$/.test(hex)) {
+    return `"${hex}" is not a hex value.`;
+  }
+  if (parseInt(hex, 16) > MAX_RADIO_CUSTOM_SUBAUDIO) {
+    return `${hex.toUpperCase()} does not fit the radio's 16-bit field (0000–FFFF); only the last 4 hex digits would be stored.`;
   }
   return null;
 }
@@ -83,7 +118,12 @@ export function validateCodeplugForWrite(codeplug: RadioCodeplug): CodeplugIssue
         issues.push({ location, message: `${label} ${formatMhz(hz)} is outside the band limits (${describeLimits(limits)}).` });
       }
     }
-    if (!ch.customSubaudioEnabled) {
+    if (ch.customSubaudioEnabled) {
+      for (const [label, hex] of [['RX', ch.customRxSubaudioHex], ['TX', ch.customTxSubaudioHex]] as const) {
+        const problem = customSubaudioProblem(hex);
+        if (problem) issues.push({ location, message: `Custom ${label} subaudio ${problem}` });
+      }
+    } else {
       const rx = toneProblem(ch.rxToneType, ch.rxToneValue);
       const tx = toneProblem(ch.txToneType, ch.txToneValue);
       if (rx) issues.push({ location, message: `RX tone: ${rx}.` });

@@ -66,6 +66,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [insertionMode, setInsertionMode] = useState<ChannelInsertionMode>('append_empty');
   const [targetChannelNum, setTargetChannelNum] = useState<number>(selectedChannelNumber || 1);
 
+  // The dialog stays mounted, so re-read the grid's selected channel each time it opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setTargetChannelNum(Math.max(1, Math.min(500, selectedChannelNumber || 1)));
+    }
+  }, [isOpen, selectedChannelNumber]);
+
   // RepeaterBook Query State (User Requirement #5)
   const [region, setRegion] = useState<'us_ca' | 'row'>('us_ca');
   const [searchMode, setSearchMode] = useState<'location' | 'proximity'>('location');
@@ -298,6 +305,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   type="number"
                   min={1}
                   max={500}
+                  aria-label="Start channel number"
                   value={targetChannelNum}
                   onChange={(e) =>
                     setTargetChannelNum(Math.max(1, Math.min(500, parseInt(e.target.value, 10) || 1)))

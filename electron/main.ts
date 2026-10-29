@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { enumerateAserHidDevices } from './hidTransport.js';
+import { readVaultFile, writeVaultFile } from './vaultStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,27 +47,17 @@ function getRollbackVaultPath(): string {
 }
 
 /**
- * Reads all saved EEPROM safety snapshots from the Rollback Vault.
+ * Reads all saved EEPROM safety snapshots from the Rollback Vault (falling back to its backup).
  */
 function readRollbackVault(): unknown[] {
-  try {
-    const file = getRollbackVaultPath();
-    if (!fs.existsSync(file)) return [];
-    const content = fs.readFileSync(file, 'utf-8');
-    const parsed = JSON.parse(content);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return readVaultFile(getRollbackVaultPath());
 }
 
 /**
- * Writes the Rollback Vault array to disk (keeping up to the 50 most recent snapshots).
+ * Atomically writes the Rollback Vault array to disk (keeping up to the 50 most recent snapshots).
  */
 function writeRollbackVault(snapshots: unknown[]): void {
-  const file = getRollbackVaultPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(snapshots.slice(0, 50), null, 2), 'utf-8');
+  writeVaultFile(getRollbackVaultPath(), snapshots);
 }
 
 function createWindow(): void {

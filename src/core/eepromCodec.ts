@@ -59,7 +59,8 @@ export function extractChannelEeprom34Bytes(ysfBuf: Uint8Array, channelNumber: n
   const customSub = (byte58 & 0x40) !== 0;
 
   if (customSub) {
-    // 8-digit custom subaudio mode writes 4-byte custom RX/TX at +0x08..+0x0B or tone words
+    // Custom subaudio: the radio record only has 16 bits per direction, so the low 16 bits of
+    // the .Ysf u32 values at +0x18 / +0x25 go into the tone words at +0x08 / +0x0A
     outView.setUint16(0x08, ysfView.getUint16(0x18, true), true);
     outView.setUint16(0x0a, ysfView.getUint16(0x25, true), true);
   } else {
@@ -273,11 +274,21 @@ export function eepromImageToYsf(eeprom: Uint8Array, baseTemplate?: Uint8Array):
 
     ysfView.setUint32(ysfOff + 0x00, rxHz, true);
     ysfView.setUint32(ysfOff + 0x0e, txHz, true);
-    ysfView.setUint16(ysfOff + 0x1c, eepView.getUint16(addr + 0x08, true), true);
-    ysfView.setUint16(ysfOff + 0x29, eepView.getUint16(addr + 0x0a, true), true);
 
     for (let i = 0; i < 6; i++) {
       ysf[ysfOff + 0x39 + i] = eeprom[addr + 0x0c + i];
+    }
+
+    // The two 16-bit words at +0x08/+0x0A hold the RX/TX tones, or, when the custom-subaudio
+    // flag (byte 58 bit 6) is set, the custom RX/TX values (mirror of extractChannelEeprom34Bytes).
+    const rxWord = eepView.getUint16(addr + 0x08, true);
+    const txWord = eepView.getUint16(addr + 0x0a, true);
+    if ((ysf[ysfOff + 0x3a] & 0x40) !== 0) {
+      ysfView.setUint32(ysfOff + 0x18, rxWord, true);
+      ysfView.setUint32(ysfOff + 0x25, txWord, true);
+    } else {
+      ysfView.setUint16(ysfOff + 0x1c, rxWord, true);
+      ysfView.setUint16(ysfOff + 0x29, txWord, true);
     }
 
     const byte60 = ysf[ysfOff + 0x3c];

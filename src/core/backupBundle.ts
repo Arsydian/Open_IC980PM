@@ -7,8 +7,8 @@
  * 3. Automatic Pre-Write EEPROM Safety Snapshot storage ("Rollback Vault")
  */
 
-import type { RadioCodeplug, RollbackSnapshot } from '../types/radio';
-import { YSF_FILE_SIZE } from './constants';
+import type { ChannelRecord, RadioCodeplug, RollbackSnapshot } from '../types/radio';
+import { RF_CALIBRATION_SIZE, YSF_FILE_SIZE } from './constants';
 import { eepromImageToYsf } from './eepromCodec';
 import { decodeYsfBuffer, encodeYsfBuffer } from './ysfCodec';
 
@@ -88,29 +88,76 @@ export function serializeRichBundle(codeplug: RadioCodeplug, appVersion: string 
 }
 
 /**
- * Parses a rich `.ic980.json` string into a `RadioCodeplug`.
+ * Whether `base64` is a string that decodes to a full `775`-byte RF calibration block.
+ */
+export function isValidCalibrationBase64(base64: unknown): base64 is string {
+  if (typeof base64 !== 'string') return false;
+  try {
+    return base64ToUint8Array(base64).byteLength === RF_CALIBRATION_SIZE;
+  } catch {
+    return false;
+  }
+}
+
+const METADATA_SOURCES: ReadonlySet<string> = new Set(['manual', 'repeaterbook', 'chirp', 'quickpack']);
+
+/**
+ * Keeps only well-typed fields of a channel metadata object read from an untrusted file, so a
+ * malformed value (e.g. `{"notes": 5}`) cannot crash code that treats it as a string later.
+ */
+function sanitizeChannelMetadata(raw: unknown): ChannelRecord['metadata'] | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const m = raw as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  return {
+    source:
+      typeof m.source === 'string' && METADATA_SOURCES.has(m.source)
+        ? (m.source as NonNullable<ChannelRecord['metadata']>['source'])
+        : undefined,
+    callsign: text(m.callsign),
+    city: text(m.city),
+    state: text(m.state),
+    notes: text(m.notes),
+    distanceMiles: typeof m.distanceMiles === 'number' && Number.isFinite(m.distanceMiles) ? m.distanceMiles : undefined,
+  };
+}
+
+/**
+ * Parses a rich `.ic980.json` string into a `RadioCodeplug`. The file is untrusted: anything that
+ * would break the editor later is rejected or dropped here.
  */
 export function deserializeRichBundle(jsonText: string): RadioCodeplug {
-  const parsed = JSON.parse(jsonText) as Partial<RichIc980Bundle>;
-  if (parsed.format !== 'open-ic980pm-bundle' || typeof parsed.ysfBase64 !== 'string') {
+  const parsed = JSON.parse(jsonText) as Partial<RichIc980Bundle> | null;
+  if (!parsed || typeof parsed !== 'object' || parsed.format !== 'open-ic980pm-bundle' || typeof parsed.ysfBase64 !== 'string') {
     throw new Error('Invalid .ic980.json bundle format.');
   }
 
-  const ysfBytes = base64ToUint8Array(parsed.ysfBase64);
+  let ysfBytes: Uint8Array;
+  try {
+    ysfBytes = base64ToUint8Array(parsed.ysfBase64);
+  } catch {
+    throw new Error('Invalid .ic980.json bundle: the embedded .Ysf data is not valid base64.');
+  }
   if (ysfBytes.byteLength !== YSF_FILE_SIZE) {
     throw new Error(`Invalid embedded .Ysf size inside bundle: ${ysfBytes.byteLength} bytes.`);
   }
 
   const codeplug = decodeYsfBuffer(ysfBytes);
-  if (parsed.rfCalibrationBase64) {
+  if (parsed.rfCalibrationBase64 !== undefined && parsed.rfCalibrationBase64 !== null) {
+    if (!isValidCalibrationBase64(parsed.rfCalibrationBase64)) {
+      throw new Error(
+        `Invalid .ic980.json bundle: the RF calibration block must be ${RF_CALIBRATION_SIZE} bytes of base64.`
+      );
+    }
     codeplug.rfCalibrationBase64 = parsed.rfCalibrationBase64;
   }
 
-  if (parsed.channelMetadata) {
+  if (parsed.channelMetadata && typeof parsed.channelMetadata === 'object') {
     for (const [chNumStr, meta] of Object.entries(parsed.channelMetadata)) {
       const chNum = parseInt(chNumStr, 10);
-      if (chNum >= 1 && chNum <= codeplug.channels.length && codeplug.channels[chNum - 1].used) {
-        codeplug.channels[chNum - 1].metadata = meta;
+      const clean = sanitizeChannelMetadata(meta);
+      if (clean && chNum >= 1 && chNum <= codeplug.channels.length && codeplug.channels[chNum - 1].used) {
+        codeplug.channels[chNum - 1].metadata = clean;
       }
     }
   }

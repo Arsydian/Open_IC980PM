@@ -85,7 +85,7 @@ npm run electron:dev
 4. **Write To Radio:**
    - Click the cyan **Write Radio** button.
    - **Automatic Pre-Write Rollback Vault:** Before any byte is sent to the radio, Open_IC980PM reads the radio and saves its current contents to the local Rollback Vault. If that backup cannot be saved, nothing is written. To roll back, load the snapshot from **Backup & Vault** and write it to the radio.
-   - Click **Start Radio Write**. Upon completion, the radio will emit a reboot beep and load your new configuration.
+   - Click **Start Radio Write**. After writing, every block is read back and compared; a mismatch is reported instead of a success message. Upon completion, the radio will emit a reboot beep and load your new configuration.
 
 ---
 
@@ -142,7 +142,7 @@ One-click import of curated channel sets:
 #### D. Flexible Channel Insertion Modes
 Use the top dropdown to control how imported channels are placed into the 500-channel list:
 - **Append to first empty slot (Default):** Preserves all existing channels and fills available gaps.
-- **Insert at selected channel:** Shifts existing channels down to make room.
+- **Insert at selected channel:** Shifts existing channels down into the empty slots that follow. Existing channels are never pushed past channel 500; imported channels that do not fit are skipped and reported.
 - **Overwrite starting at selected channel:** Replaces channels consecutively starting at your chosen row.
 
 ---

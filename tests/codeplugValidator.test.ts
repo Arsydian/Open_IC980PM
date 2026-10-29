@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isFrequencyInBand, validateCodeplugForWrite } from '../src/core/codeplugValidator';
+import { applyBandLimitEdit, isFrequencyInBand, validateCodeplugForWrite } from '../src/core/codeplugValidator';
 import { mergeImportedChannels, parseChirpOrCpsCsv } from '../src/core/chirpCsvCodec';
 import { createDefaultCodeplug } from '../src/core/ysfCodec';
 import type { RadioCodeplug } from '../src/types/radio';
@@ -45,6 +45,19 @@ describe('validateCodeplugForWrite', () => {
     ).toEqual([]);
   });
 
+  it('blocks custom subaudio values the radio cannot store', () => {
+    const custom = (rx: string, tx: string) =>
+      validateCodeplugForWrite(
+        withChannel1({ customSubaudioEnabled: true, customRxSubaudioHex: rx, customTxSubaudioHex: tx })
+      ).map((i) => i.message);
+
+    expect(custom('0000FFFF', 'ABCD')).toEqual([]);
+    expect(custom('12345678', '0000ABCD')).toEqual([
+      "Custom RX subaudio 12345678 does not fit the radio's 16-bit field (0000–FFFF); only the last 4 hex digits would be stored.",
+    ]);
+    expect(custom('0000ABCD', '')).toEqual(['Custom TX subaudio "" is not a hex value.']);
+  });
+
   it('blocks inverted or unrepresentable band limits', () => {
     const inverted = createDefaultCodeplug();
     inverted.bandLimits.vhfMinMhz = 180;
@@ -53,6 +66,18 @@ describe('validateCodeplugForWrite', () => {
     const negative = createDefaultCodeplug();
     negative.bandLimits.uhfMinMhz = -136;
     expect(validateCodeplugForWrite(negative).some((i) => i.location === 'Band limits')).toBe(true);
+  });
+
+  it('applyBandLimitEdit refuses out-of-range or unordered limits', () => {
+    const limits = createDefaultCodeplug().bandLimits; // VHF 136-174, UHF 400-480
+    expect(applyBandLimitEdit(limits, 'uhfMaxMhz', 520)).toEqual({ limits: { ...limits, uhfMaxMhz: 520 } });
+    expect(applyBandLimitEdit(limits, 'vhfMinMhz', -136)).toEqual({
+      error: 'Band limits must be between 18 and 999 MHz.',
+    });
+    expect(applyBandLimitEdit(limits, 'vhfMinMhz', 180)).toEqual({
+      error: 'VHF minimum (180 MHz) must be below VHF maximum (174 MHz).',
+    });
+    expect(applyBandLimitEdit(limits, 'uhfMaxMhz', 400)).toHaveProperty('error');
   });
 
   it('blocks an enabled password that is not exactly 6 digits', () => {

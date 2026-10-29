@@ -14,6 +14,8 @@ import {
   Image as ImageIcon,
   ChevronRight,
   CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 import type {
   BandLimitsConfig,
@@ -41,8 +43,17 @@ import { BootLogoStudio } from './components/BootLogoStudio';
 import { ImportModal } from './components/ImportModal';
 import { BackupVaultModal } from './components/BackupVaultModal';
 import { RadioSyncModal } from './components/RadioSyncModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type NavView = 'channels' | 'settings_general' | 'settings_advanced' | 'bootlogo';
+
+type ToastKind = 'success' | 'warning' | 'error';
+
+const TOAST_STYLES: Record<ToastKind, { box: string; icon: string }> = {
+  success: { box: 'border-emerald-500/40 text-emerald-200', icon: 'text-emerald-400' },
+  warning: { box: 'border-amber-500/50 text-amber-200', icon: 'text-amber-400' },
+  error: { box: 'border-rose-500/60 text-rose-200', icon: 'text-rose-400' },
+};
 
 export const App: React.FC = () => {
   // Starts with a clean, zero-placeholder codeplug (0 sample/test channels)
@@ -57,14 +68,15 @@ export const App: React.FC = () => {
   const [radioSyncMode, setRadioSyncMode] = useState<'read' | 'write' | null>(null);
 
   // Toast Banner
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
+  const showToast = (message: string, kind: ToastKind = 'success') => {
+    setToast({ message, kind });
+    // Errors stay up longer so they can be read
     setTimeout(() => {
-      setToastMessage((prev) => (prev === msg ? null : prev));
-    }, 4500);
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, kind === 'success' ? 4500 : 9000);
   };
 
   const activeChannelCount = useMemo(
@@ -119,7 +131,7 @@ export const App: React.FC = () => {
     mode: ChannelInsertionMode,
     targetChannelNumber: number
   ) => {
-    const { channels: merged, importedCount } = mergeImportedChannels(
+    const { channels: merged, importedCount, skippedCount } = mergeImportedChannels(
       codeplug.channels,
       incoming,
       mode,
@@ -127,7 +139,14 @@ export const App: React.FC = () => {
     );
     handleUpdateChannels(merged);
     setActiveView('channels');
-    showToast(`Imported ${importedCount} channel(s) using "${mode}" strategy.`);
+    if (skippedCount > 0) {
+      showToast(
+        `Imported ${importedCount} of ${incoming.length} channel(s) using "${mode}" strategy; ${skippedCount} did not fit in the 500-channel list and were not imported.`,
+        'warning'
+      );
+    } else {
+      showToast(`Imported ${importedCount} channel(s) using "${mode}" strategy.`);
+    }
   };
 
   const handleQuickSaveYsf = () => {
@@ -158,7 +177,7 @@ export const App: React.FC = () => {
             showToast(`Loaded rich bundle: ${file.name}`);
           }
         } catch (err) {
-          showToast(err instanceof Error ? err.message : 'Failed to load .ic980.json file.');
+          showToast(err instanceof Error ? err.message : 'Failed to load .ic980.json file.', 'error');
         }
       };
       reader.readAsText(file);
@@ -173,7 +192,7 @@ export const App: React.FC = () => {
             showToast(`Loaded .Ysf codeplug: ${file.name}`);
           }
         } catch (err) {
-          showToast(err instanceof Error ? err.message : 'Failed to decode .Ysf file.');
+          showToast(err instanceof Error ? err.message : 'Failed to decode .Ysf file.', 'error');
         }
       };
       reader.readAsArrayBuffer(file);
@@ -308,6 +327,12 @@ export const App: React.FC = () => {
 
         {/* Active Workspace Pane */}
         <main className="flex-1 overflow-hidden relative">
+          {/* Keyed by view so switching views clears a caught error */}
+          <ErrorBoundary
+            key={activeView}
+            title="This view hit an error and was closed"
+            hint="Your codeplug is still loaded: you can switch views, save a .Ysf file or open another file. Reload the app if this keeps happening."
+          >
           {activeView === 'channels' && (
             <ChannelGrid
               codeplug={codeplug}
@@ -348,12 +373,19 @@ export const App: React.FC = () => {
           {activeView === 'bootlogo' && (
             <BootLogoStudio defaultCallsign={codeplug.general.radioCallsign} />
           )}
+          </ErrorBoundary>
 
           {/* Floating Toast Notification */}
-          {toastMessage && (
-            <div className="fixed bottom-5 right-5 z-40 bg-slate-900/95 border border-emerald-500/40 text-emerald-200 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-medium">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{toastMessage}</span>
+          {toast && (
+            <div
+              role={toast.kind === 'success' ? 'status' : 'alert'}
+              data-kind={toast.kind}
+              className={`fixed bottom-5 right-5 z-40 max-w-md bg-slate-900/95 border px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-medium ${TOAST_STYLES[toast.kind].box}`}
+            >
+              {toast.kind === 'success' && <CheckCircle2 className={`w-4 h-4 shrink-0 ${TOAST_STYLES.success.icon}`} />}
+              {toast.kind === 'warning' && <AlertTriangle className={`w-4 h-4 shrink-0 ${TOAST_STYLES.warning.icon}`} />}
+              {toast.kind === 'error' && <XCircle className={`w-4 h-4 shrink-0 ${TOAST_STYLES.error.icon}`} />}
+              <span>{toast.message}</span>
             </div>
           )}
         </main>

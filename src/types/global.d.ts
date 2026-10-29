@@ -14,7 +14,7 @@ export interface HidDeviceInfo {
 }
 
 export interface HidProgressEvent {
-  phase: 'handshake' | 'password' | 'reading' | 'writing' | 'logo' | 'calibration' | 'complete';
+  phase: 'handshake' | 'password' | 'reading' | 'writing' | 'verifying' | 'logo' | 'calibration' | 'complete';
   currentAddress: number;
   totalBytes: number;
   bytesTransferred: number;

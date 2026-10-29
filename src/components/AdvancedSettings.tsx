@@ -29,7 +29,15 @@ import type {
 } from '../types/radio';
 import { CTCSS_TONES, DCS_CODES, RF_CALIBRATION_SIZE } from '../core/constants';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../core/backupBundle';
-import { isFrequencyInBand } from '../core/codeplugValidator';
+import { applyBandLimitEdit, isFrequencyInBand } from '../core/codeplugValidator';
+import { toneValueForType } from '../core/channelEdit';
+import { FrequencyInput } from './FrequencyInput';
+import { FileOnlyNote } from './FileOnlyNote';
+import {
+  DTMF_CONTACT_NAME_MAX,
+  maxDtmfContactCodeLength,
+  sanitizeDtmfContactName,
+} from '../core/ysfCodec';
 
 interface AdvancedSettingsProps {
   general: GeneralSettingsConfig;
@@ -61,6 +69,22 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
   onChangeCalibration,
 }) => {
   const [subTab, setSubTab] = useState<AdvancedSubTab>('crossband');
+  const [bandLimitError, setBandLimitError] = useState<string | null>(null);
+
+  const updateBandLimits = (limits: BandLimitsConfig) => {
+    setBandLimitError(null);
+    onChangeBandLimits(limits);
+  };
+
+  /** Commits one band-limit field, refusing values that are out of range or not below their maximum. */
+  const commitBandLimit = (field: keyof BandLimitsConfig, hz: number) => {
+    const result = applyBandLimitEdit(bandLimits, field, hz / 1_000_000);
+    if ('error' in result) {
+      setBandLimitError(result.error);
+    } else {
+      updateBandLimits(result.limits);
+    }
+  };
 
   const updateCrossBandSlot = (idx: number, updater: (prev: CrossBandRepeaterSlot) => CrossBandRepeaterSlot) => {
     const next = crossBandSlots.map((s, i) => (i === idx ? updater({ ...s }) : s));
@@ -180,6 +204,10 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                 <p className="text-xs text-slate-400 mt-1">
                   Configure the active cross-band repeater mode (`EEPROM 0x120E5`) and up to 7 VHF↔UHF cross-band repeater frequency pairs.
                 </p>
+                <FileOnlyNote>
+                  The switch is written to the radio, but the 7 preset slots below are saved in the .Ysf file only:
+                  their location in radio memory is not known yet, so the radio keeps using its own stored presets.
+                </FileOnlyNote>
               </div>
 
               <div className="flex items-center gap-3 text-xs">
@@ -260,12 +288,15 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                         <div className="flex items-center gap-1">
                           <select
                             value={slot.toneAType}
-                            onChange={(e) =>
+                            aria-label={`Slot ${slot.slotNumber} band A tone type`}
+                            onChange={(e) => {
+                              const toneAType = e.target.value as ToneType;
                               updateCrossBandSlot(idx, (prev) => ({
                                 ...prev,
-                                toneAType: e.target.value as ToneType,
-                              }))
-                            }
+                                toneAType,
+                                toneAValue: toneValueForType(toneAType, prev.toneAValue),
+                              }));
+                            }}
                             className="bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-slate-200"
                           >
                             <option value="None">Off</option>
@@ -332,12 +363,15 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                         <div className="flex items-center gap-1">
                           <select
                             value={slot.toneBType}
-                            onChange={(e) =>
+                            aria-label={`Slot ${slot.slotNumber} band B tone type`}
+                            onChange={(e) => {
+                              const toneBType = e.target.value as ToneType;
                               updateCrossBandSlot(idx, (prev) => ({
                                 ...prev,
-                                toneBType: e.target.value as ToneType,
-                              }))
-                            }
+                                toneBType,
+                                toneBValue: toneValueForType(toneBType, prev.toneBValue),
+                              }));
+                            }}
                             className="bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-slate-200"
                           >
                             <option value="None">Off</option>
@@ -494,6 +528,10 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                     placeholder="e.g. 101"
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 font-mono text-cyan-200"
                   />
+                  <FileOnlyNote>
+                    Saved in the .Ysf file only. Writing to the radio does not change its local ID, because its
+                    location in radio memory is not known yet.
+                  </FileOnlyNote>
                 </div>
 
                 <div>
@@ -589,11 +627,15 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                       <span className="col-span-2 font-mono text-slate-400">#{ct.index}</span>
                       <input
                         type="text"
-                        maxLength={10}
+                        maxLength={DTMF_CONTACT_NAME_MAX}
                         value={ct.name}
+                        aria-label={`Contact ${ct.index} name`}
                         onChange={(e) => {
                           const nextContacts = [...dtmf.contacts];
-                          nextContacts[idx] = { ...ct, name: e.target.value.slice(0, 10) };
+                          const name = sanitizeDtmfContactName(e.target.value);
+                          // A longer name leaves less room for the code in the shared 16-byte slot
+                          const code = ct.code.slice(0, maxDtmfContactCodeLength(name));
+                          nextContacts[idx] = { ...ct, name, code };
                           onChangeDtmf({ ...dtmf, contacts: nextContacts });
                         }}
                         placeholder="Contact Name"
@@ -601,13 +643,17 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                       />
                       <input
                         type="text"
-                        maxLength={16}
+                        maxLength={maxDtmfContactCodeLength(ct.name)}
                         value={ct.code}
+                        aria-label={`Contact ${ct.index} DTMF code`}
                         onChange={(e) => {
                           const nextContacts = [...dtmf.contacts];
                           nextContacts[idx] = {
                             ...ct,
-                            code: e.target.value.toUpperCase().replace(/[^0-9A-D*#]/g, '').slice(0, 16),
+                            code: e.target.value
+                              .toUpperCase()
+                              .replace(/[^0-9A-D*#]/g, '')
+                              .slice(0, maxDtmfContactCodeLength(ct.name)),
                           };
                           onChangeDtmf({ ...dtmf, contacts: nextContacts });
                         }}
@@ -642,7 +688,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <button
                     type="button"
                     onClick={() =>
-                      onChangeBandLimits({
+                      updateBandLimits({
                         vhfMinMhz: 144.0,
                         vhfMaxMhz: 148.0,
                         uhfMinMhz: 420.0,
@@ -656,7 +702,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <button
                     type="button"
                     onClick={() =>
-                      onChangeBandLimits({
+                      updateBandLimits({
                         vhfMinMhz: 136.0,
                         vhfMaxMhz: 174.0,
                         uhfMinMhz: 400.0,
@@ -670,7 +716,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <button
                     type="button"
                     onClick={() =>
-                      onChangeBandLimits({
+                      updateBandLimits({
                         vhfMinMhz: 136.0,
                         vhfMaxMhz: 174.0,
                         uhfMinMhz: 400.0,
@@ -689,16 +735,11 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <label className="block text-slate-400 mb-1">
                     VHF Minimum (`V_min`, MHz)
                   </label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={bandLimits.vhfMinMhz}
-                    onChange={(e) =>
-                      onChangeBandLimits({
-                        ...bandLimits,
-                        vhfMinMhz: parseFloat(e.target.value) || 136.0,
-                      })
-                    }
+                  <FrequencyInput
+                    valueHz={bandLimits.vhfMinMhz * 1_000_000}
+                    ariaLabel="VHF minimum (MHz)"
+                    onCommit={(hz) => commitBandLimit('vhfMinMhz', hz)}
+                    onInvalid={(text) => setBandLimitError(`"${text}" is not a frequency in MHz.`)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-sm text-cyan-300"
                   />
                   <span className="text-[10px] font-mono text-slate-500 mt-1 block">
@@ -710,16 +751,11 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <label className="block text-slate-400 mb-1">
                     VHF Maximum (`V_max`, MHz)
                   </label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={bandLimits.vhfMaxMhz}
-                    onChange={(e) =>
-                      onChangeBandLimits({
-                        ...bandLimits,
-                        vhfMaxMhz: parseFloat(e.target.value) || 174.0,
-                      })
-                    }
+                  <FrequencyInput
+                    valueHz={bandLimits.vhfMaxMhz * 1_000_000}
+                    ariaLabel="VHF maximum (MHz)"
+                    onCommit={(hz) => commitBandLimit('vhfMaxMhz', hz)}
+                    onInvalid={(text) => setBandLimitError(`"${text}" is not a frequency in MHz.`)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-sm text-cyan-300"
                   />
                   <span className="text-[10px] font-mono text-slate-500 mt-1 block">
@@ -731,16 +767,11 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <label className="block text-slate-400 mb-1">
                     UHF Minimum (`U_min`, MHz)
                   </label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={bandLimits.uhfMinMhz}
-                    onChange={(e) =>
-                      onChangeBandLimits({
-                        ...bandLimits,
-                        uhfMinMhz: parseFloat(e.target.value) || 400.0,
-                      })
-                    }
+                  <FrequencyInput
+                    valueHz={bandLimits.uhfMinMhz * 1_000_000}
+                    ariaLabel="UHF minimum (MHz)"
+                    onCommit={(hz) => commitBandLimit('uhfMinMhz', hz)}
+                    onInvalid={(text) => setBandLimitError(`"${text}" is not a frequency in MHz.`)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-sm text-emerald-300"
                   />
                   <span className="text-[10px] font-mono text-slate-500 mt-1 block">
@@ -752,16 +783,11 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <label className="block text-slate-400 mb-1">
                     UHF Maximum (`U_max`, MHz)
                   </label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={bandLimits.uhfMaxMhz}
-                    onChange={(e) =>
-                      onChangeBandLimits({
-                        ...bandLimits,
-                        uhfMaxMhz: parseFloat(e.target.value) || 480.0,
-                      })
-                    }
+                  <FrequencyInput
+                    valueHz={bandLimits.uhfMaxMhz * 1_000_000}
+                    ariaLabel="UHF maximum (MHz)"
+                    onCommit={(hz) => commitBandLimit('uhfMaxMhz', hz)}
+                    onInvalid={(text) => setBandLimitError(`"${text}" is not a frequency in MHz.`)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-sm text-emerald-300"
                   />
                   <span className="text-[10px] font-mono text-slate-500 mt-1 block">
@@ -769,6 +795,13 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   </span>
                 </div>
               </div>
+
+              {bandLimitError && (
+                <p role="alert" className="flex items-start gap-1.5 text-xs text-rose-300">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  <span>{bandLimitError} The previous value was kept.</span>
+                </p>
+              )}
             </div>
 
             {/* Live Out-of-Band Channel Validator */}

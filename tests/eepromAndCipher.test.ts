@@ -121,6 +121,47 @@ describe('EEPROM Address Formula, Marshaling & Password Cipher', () => {
     expect(blank.bandLimits.uhfMaxMhz).toBe(480);
   });
 
+  it('reads custom subaudio back from the radio instead of 00000000', () => {
+    const cp = createDefaultCodeplug();
+    const ch = createEmptyChannel(3);
+    Object.assign(ch, {
+      used: true,
+      rxFreqHz: 146_520_000,
+      txFreqHz: 146_520_000,
+      customSubaudioEnabled: true,
+      customRxSubaudioHex: '0000ABCD',
+      customTxSubaudioHex: '00001234',
+    });
+    cp.channels[2] = ch;
+
+    const fromRadio = decodeYsfBuffer(eepromImageToYsf(ysfToEepromImage(encodeYsfBuffer(cp))));
+    expect(fromRadio.channels[2]).toMatchObject({
+      customSubaudioEnabled: true,
+      customRxSubaudioHex: '0000ABCD',
+      customTxSubaudioHex: '00001234',
+    });
+  });
+
+  it('does not write the file-only settings the UI labels as such (keep labels truthful)', () => {
+    // If one of these starts reaching the radio, remove its FileOnlyNote in the UI.
+    const imageOf = (cp: ReturnType<typeof createDefaultCodeplug>) => {
+      const img = ysfToEepromImage(encodeYsfBuffer(cp));
+      img.fill(0, 0x12000, 0x12006); // ignore the write timestamp
+      return img;
+    };
+    const base = imageOf(createDefaultCodeplug());
+
+    const fileOnly = createDefaultCodeplug();
+    fileOnly.general.powerOnDisplayMode = 2;
+    fileOnly.dtmf.localId = '101';
+    fileOnly.crossBandSlots[0] = { ...fileOnly.crossBandSlots[0], freqAHz: 147_000_000, name: 'LINK' };
+    expect(imageOf(fileOnly)).toEqual(base);
+
+    const mapped = createDefaultCodeplug();
+    mapped.general.crossBandRepeaterSwitch = 1;
+    expect(imageOf(mapped)).not.toEqual(base);
+  });
+
   it('keeps unmapped radio bytes when writing on top of the radio image', () => {
     const radioImage = new Uint8Array(EEPROM_IMAGE_SIZE).fill(0xff);
     radioImage.fill(0x5a, 0x12000, 0x12100); // whole settings block: unknown radio values

@@ -18,6 +18,12 @@ export interface FakeRadioCommand {
 export interface FakeRadioOptions {
   /** Answer reads with this address instead of the requested one (simulates a misframed reply). */
   echoAddressOverride?: number;
+  /** Reject (NAK, `0x15`) a `'W'` block that starts at this address. */
+  nakWriteAt?: number;
+  /** Acknowledge a `'W'` block at this address but store its first byte inverted. */
+  corruptWriteAt?: number;
+  /** USB product string (default `'ASER-471'`). */
+  productName?: string;
 }
 
 export class FakeHidRadio {
@@ -27,12 +33,16 @@ export class FakeHidRadio {
   opened = false;
   readonly vendorId = 0x1234;
   readonly productId = 0x5678;
-  readonly productName = 'ASER-471';
+  readonly productName: string;
+  /** How many times the browser device picker was shown for this radio. */
+  pickerOpened = 0;
 
   private readonly listeners = new Set<InputReportListener>();
   private pending: number[] = [];
 
-  constructor(private readonly options: FakeRadioOptions = {}) {}
+  constructor(private readonly options: FakeRadioOptions = {}) {
+    this.productName = options.productName ?? 'ASER-471';
+  }
 
   async open(): Promise<void> {
     this.opened = true;
@@ -100,20 +110,36 @@ export class FakeHidRadio {
       const address = (cmd[1] << 16) | (cmd[2] << 8) | cmd[3];
       const length = cmd[4];
       this.commands.push({ op: 'write', address, length });
+      if (this.options.nakWriteAt === address) {
+        this.reply(Uint8Array.of(0x15));
+        return;
+      }
       this.memory.set(cmd.subarray(5, 5 + length), address);
+      if (this.options.corruptWriteAt === address) {
+        this.memory[address] ^= 0xff;
+      }
       this.reply(Uint8Array.of(0x06));
     }
   }
 }
 
 /**
- * Makes `navigator.hid.requestDevice()` return `radio`. Returns a function that restores the
- * previous `navigator`.
+ * Makes `navigator.hid.requestDevice()` (the picker) return `radio`. With `granted`, the page
+ * already has permission and `navigator.hid.getDevices()` lists it too. Returns a function that
+ * restores the previous `navigator`.
  */
-export function installFakeRadio(radio: FakeHidRadio): () => void {
+export function installFakeRadio(radio: FakeHidRadio, { granted = false }: { granted?: boolean } = {}): () => void {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(globalThis, 'navigator', {
-    value: { hid: { requestDevice: async () => [radio] } },
+    value: {
+      hid: {
+        getDevices: async () => (granted ? [radio] : []),
+        requestDevice: async () => {
+          radio.pickerOpened++;
+          return [radio];
+        },
+      },
+    },
     configurable: true,
     writable: true,
   });

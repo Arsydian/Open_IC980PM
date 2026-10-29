@@ -12,6 +12,14 @@ export const IC980_HID_VENDOR_NAME = 'ASER _HID';
 /** Expected USB HID Product string (`0x0041C218`). */
 export const IC980_HID_PRODUCT_NAME = 'ASER-471';
 
+/**
+ * Whether a USB HID product name looks like the IC-980 Pro Max programming interface.
+ * Uses the same name checks as the Electron device picker (`electron/main.ts`).
+ */
+export function isIc980HidProductName(name?: string): boolean {
+  return !!name && (name.includes('ASER') || name.includes('IC-980') || name.includes('PROG81'));
+}
+
 /** ASCII `PROG81LS` handshake magic (`[0x50, 0x52, 0x4F, 0x47, 0x38, 0x31, 0x4C, 0x53]`). */
 export const PROG81LS_HANDSHAKE = new Uint8Array([0x50, 0x52, 0x4f, 0x47, 0x38, 0x31, 0x4c, 0x53]);
 

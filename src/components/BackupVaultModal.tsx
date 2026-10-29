@@ -26,6 +26,7 @@ import {
   createSnapshotFromCodeplug,
   deleteSnapshotFromVault,
   deserializeRichBundle,
+  isValidCalibrationBase64,
   loadRollbackVault,
   saveSnapshotToVault,
   serializeRichBundle,
@@ -131,7 +132,7 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
     try {
       const ysfBytes = base64ToUint8Array(snap.ysfBase64);
       const restored = decodeYsfBuffer(ysfBytes);
-      if (snap.calibrationBase64) {
+      if (isValidCalibrationBase64(snap.calibrationBase64)) {
         restored.rfCalibrationBase64 = snap.calibrationBase64;
       }
       onRestoreCodeplug(restored);

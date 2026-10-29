@@ -12,12 +12,14 @@ import {
   HID_CMD_ACK,
   HID_CMD_END,
   HID_CMD_STX,
+  IC980_HID_PRODUCT_NAME,
   PROG81LS_HANDSHAKE,
   buildHidOutputReports,
   buildReadMemoryCommand,
   buildWriteMemoryCommand,
   decodeHidInputReport,
   getChannelSectorAddresses,
+  isIc980HidProductName,
 } from './hidProtocol';
 import { decryptRadioPassword } from './passwordCipher';
 
@@ -46,19 +48,68 @@ export function isWebHidSupported(): boolean {
   return typeof navigator !== 'undefined' && 'hid' in navigator;
 }
 
+/** Name of the radio operation currently using the USB connection, or `null` when idle. */
+let activeRadioOperation: string | null = null;
+
+/** Returns the name of the radio operation in progress (e.g. `'Write Radio'`), or `null`. */
+export function getActiveRadioOperation(): string | null {
+  return activeRadioOperation;
+}
+
 /**
- * Requests a HIROYASU IC-980 Pro Max ("ASER-471") USB HID device via the browser WebHID picker.
+ * Runs `operation` while holding the single radio connection. A second operation started while
+ * one is running (e.g. a Write while a boot-logo flash continues in the background) is refused
+ * before it opens the device, so two programming sessions never interleave on the radio.
+ */
+async function withRadioLock<T>(name: string, operation: () => Promise<T>): Promise<T> {
+  if (activeRadioOperation !== null) {
+    throw new Error(
+      `Another radio operation (${activeRadioOperation}) is still running. Wait for it to finish before starting ${name}.`
+    );
+  }
+  activeRadioOperation = name;
+  try {
+    return await operation();
+  } finally {
+    activeRadioOperation = null;
+  }
+}
+
+interface WebHidApiLike {
+  getDevices?(): Promise<WebHidDeviceLike[]>;
+  requestDevice(opts: { filters: unknown[] }): Promise<WebHidDeviceLike[]>;
+}
+
+/**
+ * Returns the HIROYASU IC-980 Pro Max ("ASER-471") USB HID device. A radio this page was already
+ * granted is reused without showing the picker; otherwise the browser WebHID picker is shown.
  */
 export async function requestWebHidDevice(): Promise<WebHidDeviceLike> {
   if (!isWebHidSupported()) {
     throw new Error('WebHID is not supported in this browser. Use Desktop App or Chrome/Edge.');
   }
-  const navHid = (navigator as unknown as { hid: { requestDevice(opts: { filters: unknown[] }): Promise<WebHidDeviceLike[]> } }).hid;
+  const navHid = (navigator as unknown as { hid: WebHidApiLike }).hid;
+
+  const granted = (await navHid.getDevices?.()) ?? [];
+  const known = granted.find((d) => isIc980HidProductName(d.productName));
+  if (known) {
+    return known;
+  }
+
+  // The radio's USB vendor/product IDs are not known, so the picker cannot be filtered to it.
+  // Check the chosen device's name instead of trusting whatever was picked.
   const devices = await navHid.requestDevice({ filters: [] });
   if (!devices || devices.length === 0) {
     throw new Error('No USB HID radio device was selected.');
   }
-  return devices[0];
+  const device = devices[0];
+  if (!isIc980HidProductName(device.productName)) {
+    throw new Error(
+      `"${device.productName || 'Unnamed HID device'}" is not the IC-980 Pro Max programming cable. ` +
+        `Choose the device named "${IC980_HID_PRODUCT_NAME}".`
+    );
+  }
+  return device;
 }
 
 /**
@@ -129,6 +180,18 @@ async function sendWebHidCmdGetResp(
       }
     })();
   });
+}
+
+/**
+ * Best-effort `'E'` after a failed session so the radio does not stay in programming mode until
+ * it is power-cycled. Errors are ignored: the device may already be gone.
+ */
+async function exitProgrammingModeQuietly(device: WebHidDeviceLike): Promise<void> {
+  try {
+    await sendWebHidCmdGetResp(device, HID_CMD_END, 0, 1000);
+  } catch {
+    // Nothing more we can do; the caller reports the original error.
+  }
 }
 
 /**
@@ -277,7 +340,14 @@ async function readEepromImage(
 /**
  * Reads the complete EEPROM image (`0x00000..0x18306`) from the radio via WebHID.
  */
-export async function readRadioViaWebHid(
+export function readRadioViaWebHid(
+  options: { includeCalibration?: boolean; password?: string },
+  onProgress?: (ev: HidProgressEvent) => void
+): Promise<{ eeprom: Uint8Array; calibration?: Uint8Array }> {
+  return withRadioLock('Read Radio', () => readRadioSession(options, onProgress));
+}
+
+async function readRadioSession(
   options: { includeCalibration?: boolean; password?: string },
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<{ eeprom: Uint8Array; calibration?: Uint8Array }> {
@@ -308,6 +378,9 @@ export async function readRadioViaWebHid(
     });
 
     return { eeprom, calibration };
+  } catch (err) {
+    await exitProgrammingModeQuietly(device);
+    throw err;
   } finally {
     await device.close();
   }
@@ -318,9 +391,17 @@ export async function readRadioViaWebHid(
  * 1. reads the radio's current EEPROM image,
  * 2. hands it to `prepareImage`, which is expected to save a rollback snapshot of it and return
  *    the EEPROM image to write; if it throws, the session ends before any byte is written,
- * 3. writes the returned image (`0x00000..0x1600F`).
+ * 3. writes the returned image (`0x00000..0x1600F`),
+ * 4. reads every written range back and throws if any byte differs.
  */
-export async function writeRadioViaWebHid(
+export function writeRadioViaWebHid(
+  prepareImage: (currentRadioImage: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+  onProgress?: (ev: HidProgressEvent) => void
+): Promise<void> {
+  return withRadioLock('Write Radio', () => writeRadioSession(prepareImage, onProgress));
+}
+
+async function writeRadioSession(
   prepareImage: (currentRadioImage: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<void> {
@@ -336,19 +417,12 @@ export async function writeRadioViaWebHid(
       device,
       { checkPassword: false },
       onProgress,
-      [5, 45]
+      [5, 30]
     );
 
-    let eeprom: Uint8Array;
-    try {
-      eeprom = await prepareImage(currentRadioImage);
-      if (eeprom.byteLength < 0x16010) {
-        throw new Error(`EEPROM image to write is too short (${eeprom.byteLength} bytes).`);
-      }
-    } catch (err) {
-      // Nothing has been written yet: leave programming mode and report why we stopped.
-      await sendWebHidCmdGetResp(device, HID_CMD_END, 0).catch(() => undefined);
-      throw err;
+    const eeprom = await prepareImage(currentRadioImage);
+    if (eeprom.byteLength < 0x16010) {
+      throw new Error(`EEPROM image to write is too short (${eeprom.byteLength} bytes).`);
     }
 
     const writeRange = async (startAddr: number, length: number, maxChunk: number = 128) => {
@@ -366,39 +440,58 @@ export async function writeRadioViaWebHid(
       }
     };
 
-    const sectors = getChannelSectorAddresses();
-    const totalSteps = EEPROM_READ_SEGMENTS.length + sectors.length + 1;
-    let stepIdx = 0;
+    // Everything this session writes: fixed segments, 16 channel sectors and the password block
+    const ranges: Array<{ label: string; start: number; length: number; chunk: number }> = [
+      ...EEPROM_READ_SEGMENTS.map((seg) => ({
+        label: seg.label,
+        start: seg.startAddress,
+        length: seg.endAddressInclusive - seg.startAddress + 1,
+        chunk: 128,
+      })),
+      ...getChannelSectorAddresses().map((sec) => ({
+        label: `Channel Sector ${sec.sectorIndex + 1}/16`,
+        start: sec.baseAddress,
+        length: sec.byteLength,
+        chunk: 136,
+      })),
+      { label: 'Programming Password', start: 0x16000, length: 16, chunk: 16 },
+    ];
 
-    for (const seg of EEPROM_READ_SEGMENTS) {
-      const len = seg.endAddressInclusive - seg.startAddress + 1;
-      stepIdx++;
+    for (const [idx, range] of ranges.entries()) {
       onProgress?.({
         phase: 'writing',
-        currentAddress: seg.startAddress,
-        totalBytes: totalSteps,
-        bytesTransferred: stepIdx,
-        percent: Math.round(50 + (stepIdx / totalSteps) * 48),
-        message: `Writing ${seg.label} (0x${seg.startAddress.toString(16).toUpperCase()})...`,
+        currentAddress: range.start,
+        totalBytes: ranges.length,
+        bytesTransferred: idx + 1,
+        percent: Math.round(30 + ((idx + 1) / ranges.length) * 35),
+        message: `Writing ${range.label} (0x${range.start.toString(16).toUpperCase()})...`,
       });
-      await writeRange(seg.startAddress, len, 128);
+      await writeRange(range.start, range.length, range.chunk);
     }
 
-    for (const sec of sectors) {
-      stepIdx++;
+    // Read every written range back and compare before leaving programming mode
+    const readBack = new Uint8Array(EEPROM_IMAGE_SIZE);
+    for (const [idx, range] of ranges.entries()) {
       onProgress?.({
-        phase: 'writing',
-        currentAddress: sec.baseAddress,
-        totalBytes: totalSteps,
-        bytesTransferred: stepIdx,
-        percent: Math.round(50 + (stepIdx / totalSteps) * 48),
-        message: `Writing Channel Sector ${sec.sectorIndex + 1}/16 (0x${sec.baseAddress.toString(16).toUpperCase()})...`,
+        phase: 'verifying',
+        currentAddress: range.start,
+        totalBytes: ranges.length,
+        bytesTransferred: idx + 1,
+        percent: Math.round(65 + ((idx + 1) / ranges.length) * 33),
+        message: `Verifying ${range.label} (0x${range.start.toString(16).toUpperCase()})...`,
       });
-      await writeRange(sec.baseAddress, sec.byteLength, 136);
+      await readMemoryRange(device, readBack, range.start, range.length, range.chunk);
+      for (let addr = range.start; addr < range.start + range.length; addr++) {
+        if (readBack[addr] !== eeprom[addr]) {
+          const hex = (n: number, width: number) => n.toString(16).toUpperCase().padStart(width, '0');
+          throw new Error(
+            `Verification failed at 0x${hex(addr, 5)} (${range.label}): the radio holds 0x${hex(readBack[addr], 2)} ` +
+              `but 0x${hex(eeprom[addr], 2)} was written. The radio may be partially programmed; write again, ` +
+              'or restore the pre-write snapshot from the Rollback Vault.'
+          );
+        }
+      }
     }
-
-    // Write password block at 0x16000..0x1600F
-    await writeRange(0x16000, 16, 16);
 
     await sendWebHidCmdGetResp(device, HID_CMD_END, 0);
     onProgress?.({
@@ -409,6 +502,9 @@ export async function writeRadioViaWebHid(
       percent: 100,
       message: 'Radio EEPROM write complete! Radio is rebooting.',
     });
+  } catch (err) {
+    await exitProgrammingModeQuietly(device);
+    throw err;
   } finally {
     await device.close();
   }
@@ -417,7 +513,14 @@ export async function writeRadioViaWebHid(
 /**
  * Flashes a 40,964-byte Big-Endian RGB565 Boot Logo payload to EEPROM `0x1B000` via WebHID.
  */
-export async function flashBootLogoViaWebHid(
+export function flashBootLogoViaWebHid(
+  logoPayload: Uint8Array,
+  onProgress?: (ev: HidProgressEvent) => void
+): Promise<void> {
+  return withRadioLock('Flash Boot Logo', () => flashBootLogoSession(logoPayload, onProgress));
+}
+
+async function flashBootLogoSession(
   logoPayload: Uint8Array,
   onProgress?: (ev: HidProgressEvent) => void
 ): Promise<void> {
@@ -462,6 +565,9 @@ export async function flashBootLogoViaWebHid(
       percent: 100,
       message: 'Custom Boot Logo flashed to 0x1B000!',
     });
+  } catch (err) {
+    await exitProgrammingModeQuietly(device);
+    throw err;
   } finally {
     await device.close();
   }
