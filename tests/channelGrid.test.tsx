@@ -109,3 +109,19 @@ describe('grid rendering', () => {
     ]);
   });
 });
+
+describe('grid search', () => {
+  it('matches city and callsign even when the channel has notes', () => {
+    const cp = codeplugWithChannels(3);
+    cp.channels[1].metadata = { notes: 'Data courtesy of RepeaterBook.com.', city: 'Nashville', callsign: 'W4CAT' };
+    renderGrid(cp);
+    const search = screen.getByPlaceholderText(/Search/);
+    const visibleNames = () =>
+      [...document.querySelectorAll('input[aria-label$=" name"]')].map((i) => (i as HTMLInputElement).value);
+
+    for (const q of ['nashville', 'w4cat', 'courtesy']) {
+      fireEvent.change(search, { target: { value: q } });
+      expect(visibleNames()).toEqual(['C2']);
+    }
+  });
+});

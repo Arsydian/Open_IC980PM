@@ -76,7 +76,7 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
       const rxStr = ch.used ? (ch.rxFreqHz / 1_000_000).toFixed(5) : '';
       const txStr = ch.used ? (ch.txFreqHz / 1_000_000).toFixed(5) : '';
       const numStr = String(ch.channelNumber);
-      const notesStr = (ch.metadata?.notes || ch.metadata?.city || ch.metadata?.callsign || '').toLowerCase();
+      const notesStr = [ch.metadata?.notes, ch.metadata?.city, ch.metadata?.callsign].filter(Boolean).join(' ').toLowerCase();
       return (
         ch.name.toLowerCase().includes(q) ||
         rxStr.includes(q) ||
