@@ -569,6 +569,26 @@ interface CachedApiResponse {
 
 const queryCache = new Map<string, CachedApiResponse>();
 export const REPEATERBOOK_CACHE_TTL_MS = 5 * 60 * 1000; // 5-minute session cache for duplicate suppression
+/** Most queries kept in the cache; RepeaterBook asks clients to cache only what the workflow needs. */
+export const REPEATERBOOK_CACHE_MAX_ENTRIES = 20;
+
+/** Number of query responses currently cached (for tests). */
+export function repeaterBookCacheSize(): number {
+  return queryCache.size;
+}
+
+/** Stores a response, dropping expired entries and then the oldest beyond the size cap. */
+function cacheResponse(key: string, data: RepeaterBookRawEntry[], now: number): void {
+  for (const [k, entry] of queryCache) {
+    if (now - entry.timestamp >= REPEATERBOOK_CACHE_TTL_MS) queryCache.delete(k);
+  }
+  queryCache.delete(key);
+  queryCache.set(key, { timestamp: now, data });
+  while (queryCache.size > REPEATERBOOK_CACHE_MAX_ENTRIES) {
+    const oldest = queryCache.keys().next().value as string;
+    queryCache.delete(oldest);
+  }
+}
 
 /** Clears all cached RepeaterBook query responses (useful for manual refresh or tests). */
 export function clearRepeaterBookCache(): void {
@@ -634,7 +654,7 @@ export async function queryRepeaterBookApi(
     ? (jsonPayload as RepeaterBookRawEntry[])
     : [];
 
-  queryCache.set(cacheKey, { timestamp: Date.now(), data: rawArray });
+  cacheResponse(cacheKey, rawArray, Date.now());
 
   return filterAndNormalizeRepeaterBookResults(rawArray, query);
 }

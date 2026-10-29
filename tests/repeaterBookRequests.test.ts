@@ -11,6 +11,8 @@ import {
   queryRepeaterBookApi,
   rateLimitCooldownSeconds,
   rateLimitMessage,
+  REPEATERBOOK_CACHE_MAX_ENTRIES,
+  repeaterBookCacheSize,
 } from '../src/core/repeaterBookClient';
 import {
   REDIRECT_STOPPED_MESSAGE,
@@ -118,5 +120,21 @@ describe('HTTP 429 handling', () => {
   it('passes Retry-After through from a 429 response', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 429, headers: { 'Retry-After': '900' } })));
     await expect(queryRepeaterBookApi(query)).rejects.toThrow('Retry after 900 seconds.');
+  });
+});
+
+describe('response cache', () => {
+  it('serves a repeated query from cache and keeps at most 20 queries', async () => {
+    const fetchMock = vi.fn(async () => okJson());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await queryRepeaterBookApi(query);
+    await queryRepeaterBookApi(query);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 30; i++) {
+      await queryRepeaterBookApi({ ...query, city: `Town ${i}` });
+    }
+    expect(repeaterBookCacheSize()).toBe(REPEATERBOOK_CACHE_MAX_ENTRIES);
   });
 });
