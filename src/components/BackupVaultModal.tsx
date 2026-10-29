@@ -55,8 +55,13 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      loadRollbackVault().then(setSnapshots);
       setErrorMsg(null);
+      loadRollbackVault()
+        .then(setSnapshots)
+        .catch((err: unknown) => {
+          setSnapshots([]);
+          setErrorMsg(`Could not read the Rollback Vault: ${err instanceof Error ? err.message : String(err)}`);
+        });
     }
   }, [isOpen]);
 
@@ -161,8 +166,13 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
     if (!window.confirm(`Delete the snapshot "${snap?.label ?? id}" from the Rollback Vault? This cannot be undone.`)) {
       return;
     }
-    const updated = await deleteSnapshotFromVault(id);
-    setSnapshots(updated);
+    try {
+      const updated = await deleteSnapshotFromVault(id);
+      setSnapshots(updated);
+      setErrorMsg(null);
+    } catch (err) {
+      setErrorMsg(`Could not delete the snapshot: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   return (
@@ -191,7 +201,7 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200">
+            <div role="alert" className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200">
               {errorMsg}
             </div>
           )}
@@ -322,6 +332,8 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDeleteVaultSnapshot(snap.id)}
+                        aria-label={`Delete snapshot ${snap.label}`}
+                        title="Delete snapshot"
                         className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15"
                       >
                         <Trash2 className="w-4 h-4" />
