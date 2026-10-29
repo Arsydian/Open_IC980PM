@@ -4,6 +4,8 @@
  * browser, `electron/repeaterBookProxy.ts` in the desktop app), per the RepeaterBook API wiki.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   REPEATERBOOK_TOKEN_HEADER,
@@ -16,6 +18,7 @@ import {
 } from '../src/core/repeaterBookClient';
 import {
   REDIRECT_STOPPED_MESSAGE,
+  REPEATERBOOK_USER_AGENT,
   fetchRepeaterBookJson,
   rateLimitMessage as proxyRateLimitMessage,
 } from '../electron/repeaterBookProxy';
@@ -69,16 +72,18 @@ describe('browser requests', () => {
 });
 
 describe('Electron proxy requests', () => {
-  const UA = 'Open_IC980PM/1.1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)';
+  // The exact User-Agent submitted in the project's RepeaterBook API request. RepeaterBook may deny
+  // requests whose User-Agent does not match the approved value, so this must not drift.
+  const REGISTERED_UA = 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)';
 
-  it('send the token only in X-RB-App-Token and keep the given User-Agent', async () => {
+  it('send the registered User-Agent and the token only in X-RB-App-Token', async () => {
     const fetchMock = vi.fn(async () => okJson());
-    await fetchRepeaterBookJson('https://www.repeaterbook.com/api/export.php?state_id=47', ` ${TOKEN} `, UA, fetchMock);
+    await fetchRepeaterBookJson('https://www.repeaterbook.com/api/export.php?state_id=47', ` ${TOKEN} `, fetchMock);
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.headers).toEqual({
       Accept: 'application/json',
-      'User-Agent': UA,
+      'User-Agent': REGISTERED_UA,
       [REPEATERBOOK_TOKEN_HEADER]: TOKEN,
     });
   });
@@ -88,7 +93,7 @@ describe('Electron proxy requests', () => {
       async () => new Response(null, { status: 302, headers: { Location: 'https://elsewhere.example/' } })
     );
     await expect(
-      fetchRepeaterBookJson('https://www.repeaterbook.com/api/export.php', TOKEN, UA, fetchMock)
+      fetchRepeaterBookJson('https://www.repeaterbook.com/api/export.php', TOKEN, fetchMock)
     ).rejects.toThrow(REDIRECT_STOPPED_MESSAGE);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].redirect).toBe('manual');
@@ -97,9 +102,17 @@ describe('Electron proxy requests', () => {
   it('refuses URLs that are not HTTPS repeaterbook.com', async () => {
     const fetchMock = vi.fn(async () => okJson());
     for (const url of ['http://www.repeaterbook.com/api/export.php', 'https://evil.example/api/export.php']) {
-      await expect(fetchRepeaterBookJson(url, TOKEN, UA, fetchMock)).rejects.toThrow(/Access denied/);
+      await expect(fetchRepeaterBookJson(url, TOKEN, fetchMock)).rejects.toThrow(/Access denied/);
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('registered User-Agent', () => {
+  it('is a fixed string that does not follow the package.json version', () => {
+    expect(REPEATERBOOK_USER_AGENT).toBe('Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)');
+    const main = readFileSync(resolve(__dirname, '..', 'electron', 'main.ts'), 'utf-8');
+    expect(main).not.toContain('Open_IC980PM/${APP_VERSION}');
   });
 });
 

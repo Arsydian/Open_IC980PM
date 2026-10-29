@@ -5,6 +5,13 @@
  * `rbuapp_` token travels only in the `X-RB-App-Token` header, never in the URL.
  */
 
+/**
+ * The User-Agent registered with RepeaterBook in this app's API access request. RepeaterBook may
+ * deny requests whose User-Agent does not match the approved value, so this is a fixed string:
+ * it must not follow the package.json version. Change it only together with RepeaterBook.
+ */
+export const REPEATERBOOK_USER_AGENT = 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)';
+
 /** Header RepeaterBook documents as the preferred carrier for `app_` / `rbuapp_` tokens. */
 export const REPEATERBOOK_TOKEN_HEADER = 'X-RB-App-Token';
 
@@ -32,12 +39,11 @@ export function isRedirectResponse(response: Response): boolean {
 }
 
 /**
- * Fetches a RepeaterBook API URL with the app's User-Agent and, when given, the user's token.
+ * Fetches a RepeaterBook API URL with the registered User-Agent and, when given, the user's token.
  */
 export async function fetchRepeaterBookJson(
   url: string,
   apiToken: string | undefined,
-  userAgent: string,
   fetchImpl: typeof fetch = fetch
 ): Promise<unknown> {
   if (!isValidRepeaterBookUrl(url)) {
@@ -45,7 +51,7 @@ export async function fetchRepeaterBookJson(
   }
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'User-Agent': userAgent,
+    'User-Agent': REPEATERBOOK_USER_AGENT,
   };
   if (apiToken && typeof apiToken === 'string' && apiToken.trim()) {
     headers[REPEATERBOOK_TOKEN_HEADER] = apiToken.trim();

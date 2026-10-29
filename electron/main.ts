@@ -2,9 +2,9 @@
  * @file electron/main.ts
  * @description Electron Main Process for Open_IC980PM.
  * Provides:
- * 1. Application version from `package.json` (window title and RepeaterBook User-Agent)
+ * 1. Application version from `package.json` (window title)
  * 2. WebHID device selection limited to the radio (`"ASER _HID"` / `"ASER-471"`)
- * 3. CORS-free RepeaterBook API HTTP proxy with compliant `User-Agent` header
+ * 3. CORS-free RepeaterBook API HTTP proxy sending the registered `User-Agent` (repeaterBookProxy.ts)
  * 4. Persistent Pre-Write EEPROM Safety Snapshot storage ("Rollback Vault")
  */
 
@@ -147,11 +147,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Secure RepeaterBook proxy endpoint with strict SSRF defense and app-bound token authentication
   ipcMain.handle('repeaterbook:fetch', async (_event, url: string, apiToken?: string) =>
-    fetchRepeaterBookJson(
-      url,
-      apiToken,
-      `Open_IC980PM/${APP_VERSION} (https://github.com/Arsydian/Open_IC980PM; open-source-cps)`
-    )
+    fetchRepeaterBookJson(url, apiToken)
   );
 
   ipcMain.handle('vault:list', () => {
