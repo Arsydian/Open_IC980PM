@@ -8,6 +8,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ImportModal, RB_TOKEN_STORAGE_KEY } from '../src/components/ImportModal';
+import { REPEATERBOOK_DESKTOP_ONLY_MESSAGE } from '../src/core/repeaterBookClient';
 
 afterEach(cleanup);
 
@@ -93,5 +94,24 @@ describe('ImportModal receive-only Quick-Packs', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(onImport).toHaveBeenCalledTimes(1);
     confirm.mockRestore();
+  });
+});
+
+describe('ImportModal RepeaterBook availability', () => {
+  afterEach(() => {
+    delete (window as { api?: unknown }).api;
+  });
+
+  it('explains and disables search outside the desktop app', () => {
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+    expect(screen.getByRole('button', { name: /Search Repeaters/ })).toHaveProperty('disabled', true);
+    expect(screen.getAllByRole('note').some((n) => n.textContent === REPEATERBOOK_DESKTOP_ONLY_MESSAGE)).toBe(true);
+  });
+
+  it('enables search in the desktop app', () => {
+    (window as { api?: unknown }).api = { fetchRepeaterBookJson: async () => ({ results: [] }) };
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+    expect(screen.getByRole('button', { name: /Search Repeaters/ })).toHaveProperty('disabled', false);
+    expect(screen.queryAllByRole('note').some((n) => n.textContent === REPEATERBOOK_DESKTOP_ONLY_MESSAGE)).toBe(false);
   });
 });

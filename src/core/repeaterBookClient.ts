@@ -15,34 +15,25 @@ import type { ChannelRecord, RepeaterBandOptions, RepeaterBookQuery, ToneType } 
 import { CTCSS_TONES, DCS_CODES } from './constants';
 import { createEmptyChannel } from './ysfCodec';
 
-/**
- * Header that carries the user's app-bound `rbuapp_` token. The RepeaterBook API wiki calls it
- * the preferred header and documents no URL parameter for tokens.
- */
-export const REPEATERBOOK_TOKEN_HEADER = 'X-RB-App-Token';
-
 /** Shortest search lockout after an HTTP 429, used when RepeaterBook sends no longer Retry-After. */
 export const MIN_RATE_LIMIT_COOLDOWN_SECONDS = 60;
 
 /**
- * Error text for HTTP 429, including the server's Retry-After (seconds or HTTP date) when sent.
- * Mirrors `rateLimitMessage` in electron/repeaterBookProxy.ts.
+ * Shown when RepeaterBook search is attempted outside the desktop app. Browsers cannot send the
+ * User-Agent registered with RepeaterBook, whose terms say browser-default User-Agents may be rejected.
  */
-export function rateLimitMessage(retryAfter: string | null, now: number = Date.now()): string {
-  let seconds: number | null = null;
-  if (retryAfter && /^\d+$/.test(retryAfter.trim())) {
-    seconds = parseInt(retryAfter.trim(), 10);
-  } else if (retryAfter && !Number.isNaN(Date.parse(retryAfter))) {
-    seconds = Math.max(0, Math.ceil((Date.parse(retryAfter) - now) / 1000));
-  }
-  return seconds !== null
-    ? `RepeaterBook API rate limit exceeded (HTTP 429). Retry after ${seconds} seconds.`
-    : 'RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.';
+export const REPEATERBOOK_DESKTOP_ONLY_MESSAGE =
+  'RepeaterBook search needs the Open_IC980PM desktop app: browsers cannot send the User-Agent registered with RepeaterBook. CHIRP CSV import and Quick-Packs work here.';
+
+/** Whether RepeaterBook queries can be made here (only through the Electron proxy). */
+export function isRepeaterBookAvailable(): boolean {
+  return typeof window !== 'undefined' && typeof window.api?.fetchRepeaterBookJson === 'function';
 }
 
 /**
- * How long to lock RepeaterBook searches after `errorMessage`: `0` unless it is a 429, otherwise the
- * Retry-After it carries, but never less than `MIN_RATE_LIMIT_COOLDOWN_SECONDS`.
+ * How long to lock RepeaterBook searches after `errorMessage` (as produced by `rateLimitMessage` in
+ * electron/repeaterBookProxy.ts): `0` unless it is a 429, otherwise the Retry-After it carries, but
+ * never less than `MIN_RATE_LIMIT_COOLDOWN_SECONDS`.
  */
 export function rateLimitCooldownSeconds(errorMessage: string): number {
   if (!errorMessage.includes('429')) return 0;
@@ -298,7 +289,7 @@ export function buildRepeaterBookApiUrl(query: RepeaterBookQuery): string {
   }
 
   // The user's token is never put in the URL (it would end up in logs and history); it is sent
-  // in the X-RB-App-Token header by queryRepeaterBookApi / the Electron proxy instead.
+  // in the X-RB-App-Token header by the Electron proxy instead.
   const qs = params.toString();
   return qs ? `${baseUrl}?${qs}` : baseUrl;
 }
@@ -596,8 +587,9 @@ export function clearRepeaterBookCache(): void {
 }
 
 /**
- * Executes a live RepeaterBook API query using either the Electron IPC proxy (no CORS)
- * or direct `fetch` in Web/PWA environments.
+ * Executes a live RepeaterBook API query through the Electron main-process proxy
+ * (electron/repeaterBookProxy.ts), which sends the registered User-Agent and the token header.
+ * Throws `REPEATERBOOK_DESKTOP_ONLY_MESSAGE` anywhere else.
  *
  * Implements Duplicate Suppression: identical queries within a 5-minute window are served
  * immediately from local session memory to eliminate redundant hits on RepeaterBook servers.
@@ -613,38 +605,10 @@ export async function queryRepeaterBookApi(
     return filterAndNormalizeRepeaterBookResults(cached.data, query);
   }
 
-  let jsonPayload: unknown;
-  if (typeof window !== 'undefined' && window.api?.fetchRepeaterBookJson) {
-    jsonPayload = await window.api.fetchRepeaterBookJson(url, query.apiToken);
-  } else {
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'User-Agent': 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)',
-    };
-    if (query.apiToken && query.apiToken.trim()) {
-      headers[REPEATERBOOK_TOKEN_HEADER] = query.apiToken.trim();
-    }
-    // RepeaterBook: never follow redirects on authenticated requests; a 3xx is a stop condition
-    // (browsers report it as an opaque redirect with status 0).
-    const response = await fetch(url, { headers, redirect: 'manual' });
-    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-      throw new Error(
-        'RepeaterBook answered with a redirect, so the request was stopped without following it (your token was not re-sent). Try again later.'
-      );
-    }
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(
-          `RepeaterBook API access denied (HTTP ${response.status}). An approved User-Agent and valid personal app token (rbuapp_...) are required by RepeaterBook.`
-        );
-      }
-      if (response.status === 429) {
-        throw new Error(rateLimitMessage(response.headers.get('Retry-After')));
-      }
-      throw new Error(`RepeaterBook API returned HTTP ${response.status}`);
-    }
-    jsonPayload = await response.json();
+  if (!isRepeaterBookAvailable()) {
+    throw new Error(REPEATERBOOK_DESKTOP_ONLY_MESSAGE);
   }
+  const jsonPayload: unknown = await window.api!.fetchRepeaterBookJson(url, query.apiToken);
 
   const rawArray: RepeaterBookRawEntry[] = Array.isArray(
     (jsonPayload as { results?: RepeaterBookRawEntry[] })?.results

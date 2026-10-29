@@ -10,7 +10,8 @@ import pkg from './package.json' with { type: 'json' };
  */
 /**
  * Content-Security-Policy for production builds (web and Electron). The app loads only its own
- * files; the browser build calls the RepeaterBook API directly; images come from data:/blob: URLs.
+ * files and makes no network requests of its own (RepeaterBook goes through the Electron main
+ * process); images come from data:/blob: URLs.
  * Not applied to the dev server, whose React refresh runtime uses an inline script.
  */
 export const PRODUCTION_CSP = [
@@ -18,7 +19,7 @@ export const PRODUCTION_CSP = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
-  "connect-src 'self' https://www.repeaterbook.com",
+  "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

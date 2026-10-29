@@ -38,6 +38,8 @@ import {
   NormalizedRepeaterCandidate,
   RepeaterBandId,
   US_CA_STATES,
+  REPEATERBOOK_DESKTOP_ONLY_MESSAGE,
+  isRepeaterBookAvailable,
   queryRepeaterBookApi,
   rateLimitCooldownSeconds,
 } from '../core/repeaterBookClient';
@@ -129,6 +131,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [csvError, setCsvError] = useState<string | null>(null);
 
   const dialogRef = useDialogA11y(isOpen, onClose);
+  // RepeaterBook is only reachable through the desktop app's proxy
+  const rbAvailable = isRepeaterBookAvailable();
 
   if (!isOpen) return null;
 
@@ -395,6 +399,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           {/* TAB 1: REPEATERBOOK API */}
           {activeTab === 'repeaterbook' && (
             <div className="space-y-4">
+              {!rbAvailable && (
+                <div role="note" className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-px text-amber-400" aria-hidden="true" />
+                  <span>{REPEATERBOOK_DESKTOP_ONLY_MESSAGE}</span>
+                </div>
+              )}
               {/* RepeaterBook Canonical Attribution Banner */}
               <div className="bg-cyan-500/10 border border-cyan-500/25 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-cyan-200">
                 <div className="flex items-center gap-2">
@@ -724,7 +734,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="submit"
-                      disabled={isLoadingRb || cooldownSeconds > 0}
+                      disabled={!rbAvailable || isLoadingRb || cooldownSeconds > 0}
                       className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-sm disabled:opacity-50"
                     >
                       {cooldownSeconds > 0 ? (

@@ -18,9 +18,9 @@ describe('shouldOpenExternally', () => {
 });
 
 describe('production Content-Security-Policy', () => {
-  it('only allows the app itself plus the RepeaterBook API', () => {
+  it('only allows the app itself (RepeaterBook is reached through the Electron main process)', () => {
     expect(PRODUCTION_CSP).toContain("script-src 'self'");
-    expect(PRODUCTION_CSP).toContain("connect-src 'self' https://www.repeaterbook.com");
+    expect(PRODUCTION_CSP).toContain("connect-src 'self';");
     expect(PRODUCTION_CSP).not.toMatch(/unsafe-eval|\*/);
   });
 
