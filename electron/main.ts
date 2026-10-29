@@ -2,8 +2,8 @@
  * @file electron/main.ts
  * @description Electron Main Process for Open_IC980PM.
  * Provides:
- * 1. Synchronized application version (`1.0.0`) from `package.json`
- * 2. Automatic WebHID permission granting + `node-hid` enumeration for `"ASER _HID"` / `"ASER-471"`
+ * 1. Application version from `package.json` (window title and RepeaterBook User-Agent)
+ * 2. WebHID device selection limited to the radio (`"ASER _HID"` / `"ASER-471"`)
  * 3. CORS-free RepeaterBook API HTTP proxy with compliant `User-Agent` header
  * 4. Persistent Pre-Write EEPROM Safety Snapshot storage ("Rollback Vault")
  */
@@ -12,7 +12,6 @@ import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { enumerateAserHidDevices } from './hidTransport.js';
 import { readVaultFile, writeVaultFile } from './vaultStore.js';
 import { fetchRepeaterBookJson } from './repeaterBookProxy.js';
 import { shouldOpenExternally } from './externalLinks.js';
@@ -146,12 +145,6 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  ipcMain.handle('app:getVersion', () => APP_VERSION);
-
-  ipcMain.handle('hid:listDevices', async () => {
-    return enumerateAserHidDevices();
-  });
-
   // Secure RepeaterBook proxy endpoint with strict SSRF defense and app-bound token authentication
   ipcMain.handle('repeaterbook:fetch', async (_event, url: string, apiToken?: string) =>
     fetchRepeaterBookJson(

@@ -37,3 +37,18 @@ describe('Electron preload build', () => {
     expect(mainSource).toMatch(/sandbox:\s*true/);
   });
 });
+
+describe('Electron preload bridge', () => {
+  it('exposes exactly the methods the renderer uses', () => {
+    const source = readFileSync(join(root, 'electron', 'preload.cts'), 'utf-8');
+    const block = /exposeInMainWorld\('api', \{([\s\S]*?)\n\}\);/.exec(source)?.[1] ?? '';
+    const keys = [...block.matchAll(/^\s+(\w+):/gm)].map((m) => m[1]);
+    expect(keys).toEqual([
+      'platform',
+      'fetchRepeaterBookJson',
+      'listRollbackSnapshots',
+      'saveRollbackSnapshot',
+      'deleteRollbackSnapshot',
+    ]);
+  });
+});
