@@ -64,7 +64,7 @@ export interface RichIc980Bundle {
 /**
  * Serializes a `RadioCodeplug` into a rich `.ic980.json` string.
  */
-export function serializeRichBundle(codeplug: RadioCodeplug, appVersion: string = '1.0.0'): string {
+export function serializeRichBundle(codeplug: RadioCodeplug, appVersion: string = __APP_VERSION__): string {
   const ysfBytes = encodeYsfBuffer(codeplug);
   const channelMetadata: RichIc980Bundle['channelMetadata'] = {};
 

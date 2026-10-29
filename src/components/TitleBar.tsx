@@ -1,7 +1,7 @@
 /**
  * @file src/components/TitleBar.tsx
  * @description Top application header bar for Open_IC980PM.
- * Displays the synchronized build version badge (`window.api.appVersion` / `__APP_VERSION__`),
+ * Displays the synchronized build version badge (`__APP_VERSION__` from package.json),
  * active channel count, USB HID connection indicator, and primary workflow actions.
  */
 
@@ -38,9 +38,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onQuickSaveYsf,
   onQuickLoadFile,
 }) => {
-  const appVersion =
-    (typeof window !== 'undefined' && window.api?.appVersion) ||
-    (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0');
+  // Injected from package.json at build time (vite.config.ts), for both the web and Electron builds
+  const appVersion = __APP_VERSION__;
 
   return (
     <header className="h-16 bg-slate-900/95 border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between gap-3 select-none shrink-0 z-20">

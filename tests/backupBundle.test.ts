@@ -3,6 +3,8 @@
  * @description `.ic980.json` bundle loading (`src/core/backupBundle.ts`) with untrusted input.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   deserializeRichBundle,
@@ -56,5 +58,14 @@ describe('deserializeRichBundle', () => {
   it('reports malformed files with a clear error', () => {
     expect(() => deserializeRichBundle('null')).toThrow('Invalid .ic980.json bundle format.');
     expect(() => deserializeRichBundle(bundleWithChannel1({ ysfBase64: '%%%' }))).toThrow(/not valid base64/);
+  });
+});
+
+describe('serializeRichBundle', () => {
+  it('records the real app version from package.json', () => {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8')) as { version: string };
+    const bundle = JSON.parse(serializeRichBundle(createDefaultCodeplug()));
+    expect(bundle.appVersion).toBe(pkg.version);
+    expect(bundle.appVersion).not.toBe('1.0.0');
   });
 });

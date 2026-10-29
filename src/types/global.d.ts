@@ -23,8 +23,6 @@ export interface HidProgressEvent {
 }
 
 export interface ElectronBridgeApi {
-  /** Synchronized application build version from package.json */
-  appVersion: string;
   /** Platform identifier (`win32`, `darwin`, `linux`, `web`) */
   platform: string;
   /** List connected HIROYASU / ASER-471 USB HID devices */
