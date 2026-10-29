@@ -62,6 +62,17 @@ export interface RichIc980Bundle {
 }
 
 /**
+ * Whether saving `codeplug` as a `.Ysf` would leave something out: per-channel notes
+ * (e.g. RepeaterBook city/callsign) and the RF calibration backup exist only in `.ic980.json` bundles.
+ */
+export function ysfDropsExtras(codeplug: RadioCodeplug): boolean {
+  const hasNotes = codeplug.channels.some(
+    (ch) => ch.used && ch.metadata && Boolean(ch.metadata.notes || ch.metadata.city || ch.metadata.callsign)
+  );
+  return hasNotes || Boolean(codeplug.rfCalibrationBase64);
+}
+
+/**
  * Serializes a `RadioCodeplug` into a rich `.ic980.json` string.
  */
 export function serializeRichBundle(codeplug: RadioCodeplug, appVersion: string = __APP_VERSION__): string {

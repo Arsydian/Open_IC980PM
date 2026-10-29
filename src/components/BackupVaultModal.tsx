@@ -37,6 +37,8 @@ interface BackupVaultModalProps {
   codeplug: RadioCodeplug;
   onClose: () => void;
   onRestoreCodeplug: (restored: RadioCodeplug) => void;
+  /** Called after a .Ysf file or .ic980.json bundle has been saved. */
+  onSaved?: (format: 'ysf' | 'bundle') => void;
 }
 
 export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
@@ -44,6 +46,7 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
   codeplug,
   onClose,
   onRestoreCodeplug,
+  onSaved,
 }) => {
   const [snapshots, setSnapshots] = useState<RollbackSnapshot[]>([]);
   const [customLabel, setCustomLabel] = useState('Manual Checkpoint');
@@ -67,6 +70,7 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
     a.download = `IC980PM_${new Date().toISOString().slice(0, 10)}.Ysf`;
     a.click();
     URL.revokeObjectURL(url);
+    onSaved?.('ysf');
   };
 
   const handleSaveRichJson = () => {
@@ -78,6 +82,7 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
     a.download = `IC980PM_Backup_${new Date().toISOString().slice(0, 10)}.ic980.json`;
     a.click();
     URL.revokeObjectURL(url);
+    onSaved?.('bundle');
   };
 
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {

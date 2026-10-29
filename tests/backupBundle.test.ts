@@ -11,6 +11,7 @@ import {
   isValidCalibrationBase64,
   serializeRichBundle,
   uint8ArrayToBase64,
+  ysfDropsExtras,
 } from '../src/core/backupBundle';
 import { RF_CALIBRATION_SIZE } from '../src/core/constants';
 import { createDefaultCodeplug } from '../src/core/ysfCodec';
@@ -67,5 +68,22 @@ describe('serializeRichBundle', () => {
     const bundle = JSON.parse(serializeRichBundle(createDefaultCodeplug()));
     expect(bundle.appVersion).toBe(pkg.version);
     expect(bundle.appVersion).not.toBe('1.0.0');
+  });
+});
+
+describe('ysfDropsExtras', () => {
+  it('is true only when channel notes or the RF calibration would be left out of a .Ysf', () => {
+    const plain = createDefaultCodeplug();
+    Object.assign(plain.channels[0], { used: true, rxFreqHz: 146_520_000, txFreqHz: 146_520_000 });
+    expect(ysfDropsExtras(plain)).toBe(false);
+
+    const withNotes = createDefaultCodeplug();
+    Object.assign(withNotes.channels[0], { used: true, rxFreqHz: 146_520_000, txFreqHz: 146_520_000 });
+    withNotes.channels[0].metadata = { source: 'repeaterbook', city: 'Nashville' };
+    expect(ysfDropsExtras(withNotes)).toBe(true);
+
+    const withCal = createDefaultCodeplug();
+    withCal.rfCalibrationBase64 = uint8ArrayToBase64(new Uint8Array(RF_CALIBRATION_SIZE));
+    expect(ysfDropsExtras(withCal)).toBe(true);
   });
 });

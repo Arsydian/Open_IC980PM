@@ -34,7 +34,7 @@ import {
   encodeYsfBuffer,
 } from './core/ysfCodec';
 import { mergeImportedChannels } from './core/chirpCsvCodec';
-import { deserializeRichBundle } from './core/backupBundle';
+import { deserializeRichBundle, ysfDropsExtras } from './core/backupBundle';
 import { TitleBar } from './components/TitleBar';
 import { ChannelGrid } from './components/ChannelGrid';
 import { GeneralSettings } from './components/GeneralSettings';
@@ -172,8 +172,23 @@ export const App: React.FC = () => {
     a.download = `IC980PM_${new Date().toISOString().slice(0, 10)}.Ysf`;
     a.click();
     URL.revokeObjectURL(url);
+    handleSaved('ysf');
+  };
+
+  /**
+   * Updates "Modified" after a file is saved. A .Ysf cannot hold per-channel notes or the RF
+   * calibration backup, so saving one does not count as saved while those exist.
+   */
+  const handleSaved = (format: 'ysf' | 'bundle') => {
+    if (format === 'ysf' && ysfDropsExtras(codeplug)) {
+      showToast(
+        'Saved the .Ysf file, but it cannot hold channel notes (e.g. RepeaterBook city/callsign) or the RF calibration backup. Save an .ic980.json bundle in Backup & Vault to keep them.',
+        'warning'
+      );
+      return;
+    }
     setHasUnsavedChanges(false);
-    showToast('Saved 47,046-byte .Ysf codeplug file.');
+    showToast(format === 'ysf' ? 'Saved 47,046-byte .Ysf codeplug file.' : 'Saved .ic980.json bundle.');
   };
 
   const handleQuickFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -422,6 +437,7 @@ export const App: React.FC = () => {
         isOpen={isBackupModalOpen}
         codeplug={codeplug}
         onClose={() => setIsBackupModalOpen(false)}
+        onSaved={handleSaved}
         onRestoreCodeplug={(restored) => {
           if (!confirmReplaceUnsaved('Restoring')) return;
           setCodeplug(restored);
