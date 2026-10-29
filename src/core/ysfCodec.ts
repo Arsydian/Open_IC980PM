@@ -482,15 +482,20 @@ export function decodeYsfBuffer(inputBuffer: Uint8Array): RadioCodeplug {
   );
 
   // 3. Decode 500 Memory Channels (0x0234 + idx * 85)
+  // The radio shows only channels whose used bit is set, so the bitmask decides: a deleted channel
+  // whose old bytes remain in its slot stays deleted. Files with an entirely empty bitmask (written
+  // by tools that skip it) fall back to "has a valid RX frequency".
+  const bitmaskEmpty = buf
+    .subarray(YSF_OFFSETS.CHANNEL_USED_BITMASK, YSF_OFFSETS.CHANNEL_USED_BITMASK + 63)
+    .every((b) => b === 0);
   const channels: ChannelRecord[] = [];
   for (let idx = 0; idx < MAX_CHANNELS; idx++) {
     const channelNumber = idx + 1;
     const offset = YSF_OFFSETS.CHANNELS_START + idx * YSF_CHANNEL_SIZE;
-    const bitUsed = isChannelBitSet(buf, channelNumber);
-    // Also support files where the channel frequency is populated directly
     const rxCandidate = view.getUint32(offset, true);
     const hasValidRx = rxCandidate >= 10_000_000 && rxCandidate <= 1_000_000_000 && rxCandidate !== 0xffffffff;
-    channels.push(decodeChannelAt(buf, view, offset, channelNumber, bitUsed || hasValidRx));
+    const used = bitmaskEmpty ? hasValidRx : isChannelBitSet(buf, channelNumber);
+    channels.push(decodeChannelAt(buf, view, offset, channelNumber, used));
   }
 
   // 4. Decode Handset Hotkeys (0xA88C..0xA891)

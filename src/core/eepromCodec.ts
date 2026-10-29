@@ -17,7 +17,7 @@ import {
   writeFixedAscii,
 } from './constants';
 import { decryptRadioPassword, encryptRadioPassword } from './passwordCipher';
-import { isChannelBitSet } from './ysfCodec';
+import { isChannelBitSet, setChannelBit } from './ysfCodec';
 
 /**
  * Computes the exact Radio EEPROM byte address for a 1-based channel (`1..500`).
@@ -269,6 +269,8 @@ export function eepromImageToYsf(eeprom: Uint8Array, baseTemplate?: Uint8Array):
     const rxHz = eepView.getUint32(addr + 0x00, true);
     const txHz = eepView.getUint32(addr + 0x04, true);
     if (rxHz === 0xffffffff || rxHz === 0) {
+      // Marked used but empty: clear the bit so the .Ysf does not claim a channel it lacks
+      setChannelBit(ysf, ch, false);
       continue;
     }
 

@@ -224,3 +224,13 @@ describe('EEPROM Address Formula, Marshaling & Password Cipher', () => {
     expect(decoded.rgba[0]).toBeGreaterThanOrEqual(248);
   });
 });
+
+describe('reading channels from the radio', () => {
+  it('clears the used bit of a channel whose radio record is empty', () => {
+    const eeprom = new Uint8Array(EEPROM_IMAGE_SIZE).fill(0xff);
+    eeprom.fill(0x00, 0, 63);
+    eeprom[0] = 0x02; // channel 1 marked used, but its record is still 0xFF
+    const ysf = eepromImageToYsf(eeprom);
+    expect(ysf[0x015f] & 0x02).toBe(0);
+  });
+});

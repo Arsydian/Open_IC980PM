@@ -209,3 +209,31 @@ describe('ysfCodec (47,046-byte .Ysf binary format)', () => {
     expect(decoded.hotkeys.key3Long).toBe(0x0b);
   });
 });
+
+describe('channel used bitmask', () => {
+  const withTwoChannels = () => {
+    const cp = createDefaultCodeplug();
+    for (const i of [0, 1]) {
+      Object.assign(cp.channels[i], { used: true, rxFreqHz: 146_520_000 + i * 30_000, txFreqHz: 146_520_000 + i * 30_000, name: `C${i + 1}` });
+    }
+    return encodeYsfBuffer(cp);
+  };
+
+  it('keeps a deleted channel deleted when its old bytes remain in the slot', () => {
+    const buf = withTwoChannels();
+    // Another program deleted channel 2 by clearing only its used bit.
+    buf[YSF_OFFSETS.CHANNEL_USED_BITMASK] &= ~(1 << 2);
+
+    const cp = decodeYsfBuffer(buf);
+    expect(cp.channels[0].used).toBe(true);
+    expect(cp.channels[1].used).toBe(false);
+  });
+
+  it('falls back to valid frequencies when a file has no bitmask at all', () => {
+    const buf = withTwoChannels();
+    buf.fill(0, YSF_OFFSETS.CHANNEL_USED_BITMASK, YSF_OFFSETS.CHANNEL_USED_BITMASK + 63);
+
+    const cp = decodeYsfBuffer(buf);
+    expect(cp.channels.slice(0, 3).map((c) => c.used)).toEqual([true, true, false]);
+  });
+});
