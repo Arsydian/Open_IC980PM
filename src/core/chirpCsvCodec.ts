@@ -18,6 +18,30 @@ const UNSUPPORTED_CHIRP_MODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Splits CSV text into records (lines), keeping line breaks that are inside double-quoted fields
+ * (e.g. a multi-line CHIRP comment) as part of the record instead of breaking it apart.
+ */
+function splitCsvRecords(csvText: string): string[] {
+  const text = csvText.replace(/\r\n?/g, '\n');
+  const records: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const ch of text) {
+    if (ch === '"') {
+      inQuotes = !inQuotes; // an escaped "" toggles twice, leaving the state unchanged
+    }
+    if (ch === '\n' && !inQuotes) {
+      records.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  records.push(current);
+  return records;
+}
+
+/**
  * Splits a single CSV line into fields while respecting double-quoted strings and escaped quotes.
  */
 function splitCsvLine(line: string): string[] {
@@ -79,10 +103,7 @@ function snapDcsCode(codeStr: string): number {
  * `Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,RxDtcsCode,CrossMode,Mode,TStep,Skip,Power,Comment`
  */
 export function parseChirpOrCpsCsv(csvText: string): ChannelRecord[] {
-  const lines = csvText
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n')
+  const lines = splitCsvRecords(csvText)
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && !l.startsWith('#'));
 
@@ -119,6 +140,22 @@ export function parseChirpOrCpsCsv(csvText: string): ChannelRecord[] {
   if (idxFreq === -1) {
     throw new Error('CSV is missing a recognized Frequency column (expected "Frequency" or "RX Freq").');
   }
+
+  // Watt values ("5.0W", "25W") only mean something relative to the radio that exported them, so
+  // the file's highest wattage maps to High, its lowest (if lower) to Low, anything between to Middle.
+  const wattsOf = (raw: string): number | null => {
+    const m = /^(\d+(?:\.\d+)?)\s*w$/i.exec(raw.trim());
+    return m ? parseFloat(m[1]) : null;
+  };
+  const fileWatts =
+    idxPower === -1
+      ? []
+      : lines
+          .slice(1)
+          .map((l) => wattsOf(splitCsvLine(l)[idxPower] || ''))
+          .filter((w): w is number => w !== null);
+  const maxWatts = fileWatts.length ? Math.max(...fileWatts) : 0;
+  const minWatts = fileWatts.length ? Math.min(...fileWatts) : 0;
 
   const parsed: ChannelRecord[] = [];
 
@@ -207,10 +244,13 @@ export function parseChirpOrCpsCsv(csvText: string): ChannelRecord[] {
 
     // Power
     const powerStr = idxPower !== -1 ? (cols[idxPower] || 'High').trim().toLowerCase() : 'high';
+    const watts = wattsOf(powerStr);
     let power: TxPower = 'High';
-    if (powerStr.includes('low') || powerStr.startsWith('1') || powerStr === 'l') {
+    if (watts !== null) {
+      power = watts >= maxWatts ? 'High' : watts <= minWatts ? 'Low' : 'Middle';
+    } else if (powerStr.includes('low') || powerStr === 'l') {
       power = 'Low';
-    } else if (powerStr.includes('mid') || powerStr.includes('med') || powerStr.startsWith('2') || powerStr.startsWith('3')) {
+    } else if (powerStr.includes('mid') || powerStr.includes('med')) {
       power = 'Middle';
     }
 
@@ -245,6 +285,9 @@ export function parseChirpOrCpsCsv(csvText: string): ChannelRecord[] {
   return parsed;
 }
 
+/** TX/RX differences larger than this are exported as CHIRP "split" rather than a +/- shift. */
+const SPLIT_THRESHOLD_HZ = 50_000_000;
+
 /**
  * Exports active `ChannelRecord` entries to standard CHIRP CSV format.
  */
@@ -261,15 +304,16 @@ export function exportChirpCsv(channels: ChannelRecord[]): string {
     const diffHz = ch.txFreqHz - ch.rxFreqHz;
     let duplex = '';
     let offset = '0.000000';
-    if (diffHz > 0) {
+    if (Math.abs(diffHz) > SPLIT_THRESHOLD_HZ) {
+      // Cross-band pair: CHIRP's "split" puts the absolute TX frequency in Offset
+      duplex = 'split';
+      offset = txMhz;
+    } else if (diffHz > 0) {
       duplex = '+';
       offset = (diffHz / 1_000_000).toFixed(6);
     } else if (diffHz < 0) {
       duplex = '-';
       offset = (Math.abs(diffHz) / 1_000_000).toFixed(6);
-    } else if (ch.txFreqHz !== ch.rxFreqHz) {
-      duplex = 'split';
-      offset = txMhz;
     }
 
     let tone = '';

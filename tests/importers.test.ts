@@ -366,3 +366,40 @@ describe('Quick-Packs for services this radio may not transmit on', () => {
     expect(gmrs.channels.slice(14, 22).every((c) => c.power === 'High')).toBe(true);
   });
 });
+
+describe('CHIRP CSV edge cases', () => {
+  it('ranks watt values against the file instead of guessing from the first digit', () => {
+    const csv = [
+      'Location,Name,Frequency,Duplex,Offset,Tone,Mode,Power',
+      '1,FIVE,146.520000,,0,,FM,5.0W',
+      '2,TWENTYFIVE,146.550000,,0,,FM,25W',
+      '3,FIFTY,146.580000,,0,,FM,50W',
+      '4,WORD,146.430000,,0,,FM,Low',
+    ].join('\n');
+    expect(parseChirpOrCpsCsv(csv).map((c) => `${c.name}:${c.power}`)).toEqual([
+      'FIVE:Low',
+      'TWENTYFIVE:Middle',
+      'FIFTY:High',
+      'WORD:Low',
+    ]);
+  });
+
+  it('keeps a quoted comment with a line break in one row', () => {
+    const csv = 'Location,Name,Frequency,Comment\n1,LINK,146.940000,"Linked to\nW4ABC"\n2,NEXT,147.000000,plain';
+    const rows = parseChirpOrCpsCsv(csv);
+    expect(rows.map((r) => r.name)).toEqual(['LINK', 'NEXT']);
+    expect(rows[0].metadata?.notes).toBe('Linked to\nW4ABC');
+  });
+
+  it('exports cross-band pairs as split with the absolute TX frequency', () => {
+    const ch = { ...createEmptyChannel(1), used: true, name: 'XBAND', rxFreqHz: 146_520_000, txFreqHz: 446_000_000 };
+    const row = exportChirpCsv([ch]).split('\n')[1].split(',');
+    expect(row.slice(3, 5)).toEqual(['split', '446.000000']);
+
+    const rpt = { ...createEmptyChannel(2), used: true, name: 'RPT', rxFreqHz: 444_500_000, txFreqHz: 449_500_000 };
+    expect(exportChirpCsv([rpt]).split('\n')[1].split(',').slice(3, 5)).toEqual(['+', '5.000000']);
+
+    // Round trip through the importer
+    expect(parseChirpOrCpsCsv(exportChirpCsv([ch]))[0].txFreqHz).toBe(446_000_000);
+  });
+});
