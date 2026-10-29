@@ -146,7 +146,7 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
 
   const handleCopySelected = () => {
     const ch = channels[selectedChannelNumber - 1];
-    if (ch) {
+    if (ch?.used) {
       setClipboardChannel({ ...ch });
     }
   };
@@ -156,7 +156,8 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
     updateSingleChannel(selectedChannelNumber, () => ({
       ...clipboardChannel,
       channelNumber: selectedChannelNumber,
-      used: true,
+      // Only a programmed channel (with an RX frequency) becomes a used channel
+      used: clipboardChannel.used && clipboardChannel.rxFreqHz > 0,
     }));
   };
 
@@ -190,7 +191,9 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
 
   const handleAddAtFirstEmpty = () => {
     const firstEmpty = channels.find((c) => !c.used);
-    const targetNum = firstEmpty ? firstEmpty.channelNumber : selectedChannelNumber;
+    // A full list has nowhere to add; never overwrite the selected channel instead
+    if (!firstEmpty) return;
+    const targetNum = firstEmpty.channelNumber;
     updateSingleChannel(targetNum, (prev) => ({
       ...prev,
       used: true,
@@ -263,8 +266,13 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
           <button
             type="button"
             onClick={handleAddAtFirstEmpty}
-            title="Activate first available empty channel"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition-colors"
+            disabled={activeCount >= MAX_CHANNELS}
+            title={
+              activeCount >= MAX_CHANNELS
+                ? 'All 500 channels are programmed; clear one to add another'
+                : 'Activate first available empty channel'
+            }
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition-colors disabled:opacity-40"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Channel</span>
@@ -293,8 +301,9 @@ export const ChannelGrid: React.FC<ChannelGridProps> = ({
           <button
             type="button"
             onClick={handleCopySelected}
+            disabled={!selectedCh.used}
             title="Copy Selected Channel"
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-40"
           >
             <Copy className="w-3.5 h-3.5" />
           </button>

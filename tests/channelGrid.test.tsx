@@ -125,3 +125,31 @@ describe('grid search', () => {
     }
   });
 });
+
+describe('adding and pasting channels', () => {
+  const button = (text: string) =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent?.includes(text)) as HTMLButtonElement;
+
+  it('does not overwrite the selected channel when all 500 are programmed', () => {
+    const state = renderGrid(codeplugWithChannels(500), 7);
+    const add = button('Add Channel');
+    expect(add.disabled).toBe(true);
+    expect(add.title).toMatch(/All 500 channels are programmed/);
+
+    fireEvent.click(add);
+    expect(state.current.channels[6]).toMatchObject({ name: 'C7', rxFreqHz: 147_000_000 - 6 * 15_000 });
+  });
+
+  it('does not turn an empty row into a used channel by copy and paste', () => {
+    const state = renderGrid(codeplugWithChannels(2), 5);
+    const copy = document.querySelector('button[title="Copy Selected Channel"]') as HTMLButtonElement;
+    expect(copy.disabled).toBe(true); // channel 5 is empty
+
+    // Copy channel 1 and paste it into 5: that does create a used channel.
+    fireEvent.click(document.querySelector('input[aria-label="Channel 1 name"]')!.closest('tr')!);
+    fireEvent.click(copy);
+    fireEvent.click(document.querySelector('input[aria-label="Channel 5 name"]')!.closest('tr')!);
+    fireEvent.click(document.querySelector('button[title="Paste into Selected Channel"]')!);
+    expect(state.current.channels[4]).toMatchObject({ used: true, name: 'C1', channelNumber: 5 });
+  });
+});
