@@ -361,6 +361,18 @@ export function isBandAllowed(bandId: RepeaterBandId, bands?: RepeaterBandOption
 }
 
 /**
+ * Whether a repeater's (lower-case) city belongs to the searched city: the city contains the search
+ * text ("san francisco" for "francisco"), or appears as whole words in it ("nashville" for
+ * "nashville tn"). A blank city never matches, and "ada" does not match "adams".
+ */
+export function cityMatchesFilter(city: string, filter: string): boolean {
+  if (!city || !filter) return false;
+  if (city.includes(filter)) return true;
+  const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(filter);
+}
+
+/**
  * Filters and normalizes raw RepeaterBook entries according to User Requirement #5:
  * - Automatically filters to 2m, 70cm, or selected unlocked bands (GMRS, 1.25m, Extended VHF/UHF)
  * - Filters by City/State or Lat/Long + Radius (Haversine distance)
@@ -393,7 +405,7 @@ export function filterAndNormalizeRepeaterBookResults(
     for (let j = 0; j < rawResults.length; j++) {
       const r = rawResults[j];
       const rCity = (r['Nearest City'] || r.County || r.Landmark || '').trim().toLowerCase();
-      if (rCity.includes(cityFilter) || cityFilter.includes(rCity)) {
+      if (cityMatchesFilter(rCity, cityFilter)) {
         const lat = parseFloat(r.Lat || '');
         const lon = parseFloat(r.Long || '');
         if (Number.isFinite(lat) && Number.isFinite(lon)) {

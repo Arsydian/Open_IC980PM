@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRepeaterBookApiUrl,
+  cityMatchesFilter,
   clearRepeaterBookCache,
   filterAndNormalizeRepeaterBookResults,
   formatCityCallsignName,
@@ -311,5 +312,34 @@ describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
     // Verify NOAA Weather Quick-Pack has hardware NOAA flag enabled on all 7 channels
     expect(NOAA_WEATHER_PACK.channels.length).toBe(7);
     expect(NOAA_WEATHER_PACK.channels.every((c) => c.noaaFlag === true)).toBe(true);
+  });
+});
+
+describe('RepeaterBook city search', () => {
+  const nashvilleQuery = {
+    region: 'us_ca' as const,
+    searchMode: 'location' as const,
+    state: '47',
+    city: 'Nashville',
+    radius: 25,
+    distanceUnit: 'miles' as const,
+    maxResults: 50,
+  };
+
+  it('ignores repeaters with a blank city when finding the city centre', () => {
+    const raw: RepeaterBookRawEntry[] = [
+      { Frequency: '146.94', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4A' },
+      { Frequency: '147.00', 'Nearest City': '', Lat: '45.0', Long: '-120.0', Callsign: 'W7Z' },
+    ];
+    const res = filterAndNormalizeRepeaterBookResults(raw, nashvilleQuery);
+    expect(res.map((r) => r.callsign)).toEqual(['W4A']);
+    expect(res[0].distanceMiles).toBe(0);
+  });
+
+  it('matches whole city names only', () => {
+    expect(cityMatchesFilter('san francisco', 'francisco')).toBe(true);
+    expect(cityMatchesFilter('nashville', 'nashville tn')).toBe(true);
+    expect(cityMatchesFilter('ada', 'adams')).toBe(false);
+    expect(cityMatchesFilter('', 'nashville')).toBe(false);
   });
 });
