@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { enumerateAserHidDevices } from './hidTransport.js';
 import { readVaultFile, writeVaultFile } from './vaultStore.js';
 import { fetchRepeaterBookJson } from './repeaterBookProxy.js';
+import { shouldOpenExternally } from './externalLinks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,7 +84,7 @@ function createWindow(): void {
 
   // Confine navigation and popups: open external links in default OS browser, never in Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://') || url.startsWith('http://')) {
+    if (shouldOpenExternally(url)) {
       shell.openExternal(url);
     }
     return { action: 'deny' };

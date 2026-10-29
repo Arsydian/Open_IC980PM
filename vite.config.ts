@@ -1,3 +1,4 @@
+import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import pkg from './package.json' with { type: 'json' };
@@ -7,8 +8,39 @@ import pkg from './package.json' with { type: 'json' };
  * Injects the synchronized package.json version into __APP_VERSION__
  * so both Electron and Web/PWA builds display the exact build badge.
  */
+/**
+ * Content-Security-Policy for production builds (web and Electron). The app loads only its own
+ * files; the browser build calls the RepeaterBook API directly; images come from data:/blob: URLs.
+ * Not applied to the dev server, whose React refresh runtime uses an inline script.
+ */
+export const PRODUCTION_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' https://www.repeaterbook.com",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
+/** Injects PRODUCTION_CSP as a <meta> tag into index.html during `vite build`. */
+export function productionCspPlugin(): Plugin {
+  return {
+    name: 'production-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace(
+        '<head>',
+        `<head>
+    <meta http-equiv="Content-Security-Policy" content="${PRODUCTION_CSP}" />`
+      );
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), productionCspPlugin()],
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
