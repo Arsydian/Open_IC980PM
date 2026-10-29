@@ -100,13 +100,11 @@ export const App: React.FC = () => {
     [codeplug.channels]
   );
 
-  // State updaters that keep rawYsfBuffer synchronized for live hex inspection
+  // rawYsfBuffer stays the buffer the codeplug was loaded from: encodeYsfBuffer() uses it only to
+  // keep bytes it does not map, so it is not re-encoded (47 KB) on every edit. Code that needs the
+  // current bytes encodes on demand.
   const applyCodeplugUpdate = (updater: (prev: RadioCodeplug) => RadioCodeplug) => {
-    setCodeplug((prev) => {
-      const next = updater(prev);
-      const updatedRaw = encodeYsfBuffer(next);
-      return { ...next, rawYsfBuffer: updatedRaw };
-    });
+    setCodeplug(updater);
     setHasUnsavedChanges(true);
   };
 

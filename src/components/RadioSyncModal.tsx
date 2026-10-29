@@ -76,7 +76,8 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
           { includeCalibration, password: passwordInput },
           (ev) => setProgress(ev)
         );
-        const ysfBuf = eepromImageToYsf(eeprom, codeplug.rawYsfBuffer);
+        // File-only fields (cross-band presets etc.) come from the current editor contents
+        const ysfBuf = eepromImageToYsf(eeprom, encodeYsfBuffer(codeplug));
         const decoded = decodeYsfBuffer(ysfBuf);
         if (calibration) {
           decoded.rfCalibrationBase64 = uint8ArrayToBase64(calibration);

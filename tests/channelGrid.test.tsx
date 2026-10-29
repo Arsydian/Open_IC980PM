@@ -11,6 +11,16 @@ import { ChannelGrid } from '../src/components/ChannelGrid';
 import { createDefaultCodeplug } from '../src/core/ysfCodec';
 import type { RadioCodeplug } from '../src/types/radio';
 
+// Each row renders two FrequencyInputs (RX and TX); counting their renders counts row renders.
+const frequencyInputRenders = new Map<string, number>();
+vi.mock('../src/components/FrequencyInput', () => ({
+  FrequencyInput: ({ ariaLabel }: { ariaLabel?: string }) => {
+    const key = ariaLabel ?? '?';
+    frequencyInputRenders.set(key, (frequencyInputRenders.get(key) ?? 0) + 1);
+    return <input aria-label={ariaLabel} readOnly />;
+  },
+}));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -81,5 +91,21 @@ describe('destructive grid actions ask first', () => {
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: /Sort Freq/ }));
     expect(names(state.current, 3)).toEqual(['C3', 'C2', 'C1']);
+  });
+});
+
+describe('grid rendering', () => {
+  it('re-renders only the edited row when a channel name changes', () => {
+    renderGrid(codeplugWithChannels(40));
+    frequencyInputRenders.clear();
+    const name5 = () => document.querySelector('input[aria-label="Channel 5 name"]') as HTMLInputElement;
+
+    fireEvent.change(name5(), { target: { value: 'NEW NAME' } });
+
+    expect(name5().value).toBe('NEW NAME');
+    expect([...frequencyInputRenders.keys()].sort()).toEqual([
+      'Channel 5 RX frequency (MHz)',
+      'Channel 5 TX frequency (MHz)',
+    ]);
   });
 });

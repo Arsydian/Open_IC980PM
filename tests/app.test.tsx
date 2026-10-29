@@ -10,6 +10,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
 import { encodeYsfBuffer, createDefaultCodeplug } from '../src/core/ysfCodec';
 
+// Spy on the .Ysf encoder while keeping its real behaviour.
+vi.mock('../src/core/ysfCodec', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../src/core/ysfCodec')>();
+  return { ...mod, encodeYsfBuffer: vi.fn(mod.encodeYsfBuffer) };
+});
+
 afterEach(cleanup);
 
 // Rendering the full 500-row app is slow in jsdom, especially with other test files running.
@@ -63,5 +69,17 @@ describe('toast banner', () => {
     const status = await screen.findByRole('status', {}, { timeout: WAIT_MS });
     expect(status.textContent).toBe('Loaded .Ysf codeplug: good.Ysf');
     expect(status.getAttribute('data-kind')).toBe('success');
+  });
+});
+
+describe('editing performance', () => {
+  it('does not re-encode the 47 KB .Ysf buffer on every edit', { timeout: 30_000 }, async () => {
+    render(<App />);
+    const addChannel = await screen.findByRole('button', { name: /Add Channel/ }, { timeout: WAIT_MS });
+    vi.mocked(encodeYsfBuffer).mockClear();
+
+    fireEvent.click(addChannel);
+    expect(await screen.findByText('Modified', {}, { timeout: WAIT_MS })).toBeTruthy();
+    expect(encodeYsfBuffer).not.toHaveBeenCalled();
   });
 });
