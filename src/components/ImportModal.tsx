@@ -55,6 +55,9 @@ interface ImportModalProps {
 
 type ImportTab = 'repeaterbook' | 'chirp' | 'quickpacks';
 
+/** localStorage key for the user's RepeaterBook app token (kept on this computer only). */
+export const RB_TOKEN_STORAGE_KEY = 'open_ic980pm_rb_token';
+
 export const ImportModal: React.FC<ImportModalProps> = ({
   isOpen,
   selectedChannelNumber,
@@ -88,7 +91,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [openOnly, setOpenOnly] = useState<boolean>(true);
   const [apiToken, setApiToken] = useState<string>(() => {
     try {
-      return localStorage.getItem('open_ic980pm_rb_token') || '';
+      return localStorage.getItem(RB_TOKEN_STORAGE_KEY) || '';
     } catch {
       return '';
     }
@@ -402,24 +405,35 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     <span>Personal App-Bound API Token</span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    RepeaterBook requires an app-bound token (<code className="text-amber-300 font-mono">rbuapp_...</code>) for distributed applications. Free for all licensed hams.
+                    RepeaterBook requires your own app-bound token (<code className="text-amber-300 font-mono">rbuapp_...</code>), generated while logged in on its API Applications page. It is shown only once there, and is kept only on this computer.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 w-full md:w-auto">
                   <input
                     type="password"
+                    aria-label="RepeaterBook app token"
+                    autoComplete="off"
                     value={apiToken}
-                    onChange={(e) => {
-                      setApiToken(e.target.value);
+                    onChange={(e) => setApiToken(e.target.value)}
+                    // Saved once when the field is left, not on every keystroke
+                    onBlur={(e) => {
+                      const token = e.target.value.trim();
+                      setApiToken(token);
                       try {
-                        localStorage.setItem('open_ic980pm_rb_token', e.target.value);
-                      } catch {}
+                        if (token) {
+                          localStorage.setItem(RB_TOKEN_STORAGE_KEY, token);
+                        } else {
+                          localStorage.removeItem(RB_TOKEN_STORAGE_KEY);
+                        }
+                      } catch {
+                        // Storage unavailable (private window); the token still works for this session
+                      }
                     }}
                     placeholder="Enter rbuapp_... token"
                     className="w-full md:w-64 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
                   />
                   <a
-                    href="https://www.repeaterbook.com/index.php/api-apps"
+                    href="https://www.repeaterbook.com/user/api_apps.php"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-medium whitespace-nowrap transition-colors shrink-0"

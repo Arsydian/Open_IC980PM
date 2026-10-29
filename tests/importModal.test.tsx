@@ -7,9 +7,39 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ImportModal } from '../src/components/ImportModal';
+import { ImportModal, RB_TOKEN_STORAGE_KEY } from '../src/components/ImportModal';
 
 afterEach(cleanup);
+
+describe('ImportModal RepeaterBook token', () => {
+  it('saves the token once when the field is left, trimmed, and removes it when cleared', () => {
+    localStorage.clear();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+    const input = screen.getByLabelText('RepeaterBook app token');
+
+    for (const partial of ['r', 'rb', 'rbuapp_abc ']) {
+      fireEvent.change(input, { target: { value: partial } });
+    }
+    expect(setItem).not.toHaveBeenCalled();
+
+    fireEvent.blur(input);
+    expect(localStorage.getItem(RB_TOKEN_STORAGE_KEY)).toBe('rbuapp_abc');
+    expect(setItem).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(localStorage.getItem(RB_TOKEN_STORAGE_KEY)).toBeNull();
+    setItem.mockRestore();
+  });
+
+  it('links to the page where RepeaterBook users generate app tokens', () => {
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+    expect(screen.getByRole('link', { name: /Get Token/ }).getAttribute('href')).toBe(
+      'https://www.repeaterbook.com/user/api_apps.php'
+    );
+  });
+});
 
 describe('ImportModal start channel', () => {
   it('uses the channel selected when the dialog opens, not the one at startup', () => {
