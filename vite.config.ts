@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import pkg from './package.json' with { type: 'json' };
 
@@ -20,5 +20,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+  },
+  test: {
+    // jsdom renders of the 500-row grid and TypeScript compiles in tests can exceed Vitest's 5 s
+    // default when test files run in parallel.
+    testTimeout: 20_000,
   },
 });
