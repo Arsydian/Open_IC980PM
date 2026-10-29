@@ -556,7 +556,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                       htmlFor="rb-max-results"
                       className="block text-xs font-semibold text-slate-300 mb-1.5"
                     >
-                      3. Limit Max Results (Arbitrary #)
+                      3. Limit Max Results (up to 100)
                     </label>
                     <div className="flex items-center gap-2">
                       <input

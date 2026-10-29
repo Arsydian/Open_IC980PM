@@ -115,3 +115,11 @@ describe('ImportModal RepeaterBook availability', () => {
     expect(screen.queryAllByRole('note').some((n) => n.textContent === REPEATERBOOK_DESKTOP_ONLY_MESSAGE)).toBe(false);
   });
 });
+
+describe('ImportModal result limit label', () => {
+  it('states the 100-result cap instead of an "arbitrary" limit', () => {
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+    expect(screen.getByText(/Limit Max Results/).textContent).toContain('up to 100');
+    expect(screen.queryByText(/Arbitrary/)).toBeNull();
+  });
+});
