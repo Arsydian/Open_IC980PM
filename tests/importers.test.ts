@@ -19,7 +19,7 @@ import {
   mergeImportedChannels,
   parseChirpOrCpsCsv,
 } from '../src/core/chirpCsvCodec';
-import { NOAA_WEATHER_PACK } from '../src/core/quickPacks';
+import { ALL_QUICK_PACKS, NOAA_WEATHER_PACK, RECEIVE_ONLY_NOTE } from '../src/core/quickPacks';
 import { createDefaultCodeplug, createEmptyChannel } from '../src/core/ysfCodec';
 
 describe('RepeaterBook, CHIRP CSV & Quick-Pack Importers', () => {
@@ -341,5 +341,28 @@ describe('RepeaterBook city search', () => {
     expect(cityMatchesFilter('nashville', 'nashville tn')).toBe(true);
     expect(cityMatchesFilter('ada', 'adams')).toBe(false);
     expect(cityMatchesFilter('', 'nashville')).toBe(false);
+  });
+});
+
+describe('Quick-Packs for services this radio may not transmit on', () => {
+  const receiveOnlyIds = ['noaa-wx', 'us-frs', 'us-gmrs', 'marine-vhf'];
+
+  it('carry a regulatory note and label every channel receive-only exactly once', () => {
+    for (const pack of ALL_QUICK_PACKS) {
+      const expectNote = receiveOnlyIds.includes(pack.id);
+      expect(Boolean(pack.regulatoryNote)).toBe(expectNote);
+      for (const ch of pack.channels) {
+        const notes = ch.metadata?.notes ?? '';
+        expect(notes.startsWith(RECEIVE_ONLY_NOTE)).toBe(expectNote);
+        expect(notes.indexOf(RECEIVE_ONLY_NOTE, 1)).toBe(-1);
+        expect(ch.name.length).toBeLessThanOrEqual(16);
+      }
+    }
+  });
+
+  it('sets GMRS channels 1–14 to Low power', () => {
+    const gmrs = ALL_QUICK_PACKS.find((p) => p.id === 'us-gmrs')!;
+    expect(gmrs.channels.slice(0, 14).every((c) => c.power === 'Low')).toBe(true);
+    expect(gmrs.channels.slice(14, 22).every((c) => c.power === 'High')).toBe(true);
   });
 });

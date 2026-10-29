@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Sliders,
   Unlock,
+  AlertTriangle,
 } from 'lucide-react';
 import type { ChannelInsertionMode, ChannelRecord, RepeaterBandOptions, RepeaterBookQuery } from '../types/radio';
 import {
@@ -253,6 +254,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   };
 
   const handleImportQuickPack = (pack: QuickPackDefinition) => {
+    if (
+      pack.regulatoryNote &&
+      !window.confirm(`${pack.name}\n\n${pack.regulatoryNote}\n\nThe channels can still transmit. Import them anyway?`)
+    ) {
+      return;
+    }
     onImportChannels(pack.channels, insertionMode, targetChannelNum);
     onClose();
   };
@@ -1103,6 +1110,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                       {pack.description}
                     </p>
+                    {pack.regulatoryNote && (
+                      <p role="note" className="mt-2 flex items-start gap-1.5 text-[11px] leading-snug text-amber-300">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+                        <span>{pack.regulatoryNote}</span>
+                      </p>
+                    )}
                   </div>
 
                   <button

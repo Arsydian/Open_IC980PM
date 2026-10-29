@@ -55,10 +55,43 @@ describe('ImportModal start channel', () => {
     expect(screen.getByLabelText('Start channel number')).toHaveProperty('value', '120');
 
     fireEvent.click(screen.getByRole('button', { name: /Quick-Packs/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Import NOAA Weather/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Import 2m \/ 70cm Ham Simplex Calling/ }));
 
     expect(onImport).toHaveBeenCalledTimes(1);
     expect(onImport.mock.calls[0][1]).toBe('overwrite_at');
     expect(onImport.mock.calls[0][2]).toBe(120);
+  });
+});
+
+describe('ImportModal receive-only Quick-Packs', () => {
+  const open = (onImport: () => void) => {
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={onImport} />);
+    fireEvent.click(screen.getByRole('button', { name: /Quick-Packs/ }));
+  };
+
+  it('shows the regulatory note on the card and asks before importing', () => {
+    const onImport = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    open(onImport);
+
+    expect(screen.getAllByRole('note').some((n) => /NOAA Weather Radio is a broadcast service/.test(n.textContent ?? ''))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Import NOAA Weather/ }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(onImport).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: /Import NOAA Weather/ }));
+    expect(onImport).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+  });
+
+  it('imports amateur packs without asking', () => {
+    const onImport = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm');
+    open(onImport);
+    fireEvent.click(screen.getByRole('button', { name: /Import 2m \/ 70cm Ham Simplex Calling/ }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onImport).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
   });
 });

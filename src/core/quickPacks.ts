@@ -16,7 +16,27 @@ export interface QuickPackDefinition {
   name: string;
   category: string;
   description: string;
+  /**
+   * Shown before import for services this amateur radio may not lawfully transmit on (US rules).
+   * The radio has no confirmed per-channel TX-inhibit setting, so the channels can still transmit.
+   */
+  regulatoryNote?: string;
   channels: ChannelRecord[];
+}
+
+/** Prefix added to the notes of channels from packs with a `regulatoryNote`. */
+export const RECEIVE_ONLY_NOTE = 'RECEIVE ONLY: do not transmit on this channel with this radio.';
+
+/** Adds `RECEIVE_ONLY_NOTE` to every channel of a pack that must not be used to transmit. */
+function receiveOnly(channels: ChannelRecord[]): ChannelRecord[] {
+  return channels.map((ch) => {
+    const notes = ch.metadata?.notes;
+    if (notes?.startsWith(RECEIVE_ONLY_NOTE)) return ch;
+    return {
+      ...ch,
+      metadata: { ...ch.metadata, source: 'quickpack', notes: notes ? `${RECEIVE_ONLY_NOTE} ${notes}` : RECEIVE_ONLY_NOTE },
+    };
+  });
 }
 
 function makePackChannel(
@@ -53,7 +73,9 @@ export const NOAA_WEATHER_PACK: QuickPackDefinition = {
   name: 'NOAA Weather (WX 1–7)',
   category: 'Weather & Emergency',
   description: 'All 7 NOAA Weather Radio frequencies (162.400–162.550 MHz) with the IC-980 Pro Max hardware NOAA flag enabled.',
-  channels: [
+  regulatoryNote:
+    'Receive only. NOAA Weather Radio is a broadcast service; never transmit on these frequencies.',
+  channels: receiveOnly([
     makePackChannel('NOAA WX 1', 162.55, 162.55, 'Low', 'Wide', true, 'NOAA Weather Channel 1 (162.550 MHz)'),
     makePackChannel('NOAA WX 2', 162.4, 162.4, 'Low', 'Wide', true, 'NOAA Weather Channel 2 (162.400 MHz)'),
     makePackChannel('NOAA WX 3', 162.475, 162.475, 'Low', 'Wide', true, 'NOAA Weather Channel 3 (162.475 MHz)'),
@@ -61,7 +83,7 @@ export const NOAA_WEATHER_PACK: QuickPackDefinition = {
     makePackChannel('NOAA WX 5', 162.45, 162.45, 'Low', 'Wide', true, 'NOAA Weather Channel 5 (162.450 MHz)'),
     makePackChannel('NOAA WX 6', 162.5, 162.5, 'Low', 'Wide', true, 'NOAA Weather Channel 6 (162.500 MHz)'),
     makePackChannel('NOAA WX 7', 162.525, 162.525, 'Low', 'Wide', true, 'NOAA Weather Channel 7 (162.525 MHz)'),
-  ],
+  ]),
 };
 
 /**
@@ -79,7 +101,7 @@ export const HAM_CALLING_PACK: QuickPackDefinition = {
     makePackChannel('2M SIMP 147.42', 147.42, 147.42, 'High', 'Wide', false, '2m FM Simplex'),
     makePackChannel('2M SIMP 147.54', 147.54, 147.54, 'High', 'Wide', false, '2m FM Simplex'),
     makePackChannel('70CM CALL 446.0', 446.0, 446.0, 'High', 'Wide', false, 'National 70cm FM Simplex Calling'),
-    makePackChannel('70CM SIMP 446.5', 446.05, 446.05, 'High', 'Wide', false, '70cm FM Simplex'),
+    makePackChannel('70CM SIMP 446.05', 446.05, 446.05, 'High', 'Wide', false, '70cm FM Simplex'),
   ],
 };
 
@@ -91,7 +113,9 @@ export const FRS_PACK: QuickPackDefinition = {
   name: 'FRS Channels (1–22)',
   category: 'Personal Radio (US)',
   description: 'Standard 22 Family Radio Service (FRS) UHF channels (462 / 467 MHz, Narrowband).',
-  channels: [
+  regulatoryNote:
+    'Receive only. In the US, FRS may only be transmitted on with FCC-certified FRS radios, which the IC-980 Pro Max is not.',
+  channels: receiveOnly([
     makePackChannel('FRS CH 01', 462.5625, 462.5625, 'Low', 'Narrow'),
     makePackChannel('FRS CH 02', 462.5875, 462.5875, 'Low', 'Narrow'),
     makePackChannel('FRS CH 03', 462.6125, 462.6125, 'Low', 'Narrow'),
@@ -114,7 +138,7 @@ export const FRS_PACK: QuickPackDefinition = {
     makePackChannel('FRS CH 20', 462.675, 462.675, 'Low', 'Narrow'),
     makePackChannel('FRS CH 21', 462.7, 462.7, 'Low', 'Narrow'),
     makePackChannel('FRS CH 22', 462.725, 462.725, 'Low', 'Narrow'),
-  ],
+  ]),
 };
 
 /**
@@ -125,11 +149,14 @@ export const GMRS_PACK: QuickPackDefinition = {
   name: 'GMRS (Ch 1–22 + 8 Repeaters)',
   category: 'Personal Radio (US)',
   description: 'All 22 GMRS simplex channels plus the 8 GMRS repeater pairs (462.550–462.725 MHz with +5 MHz input).',
-  channels: [
+  regulatoryNote:
+    'Receive only unless permitted. In the US, GMRS transmitting needs a GMRS licence and a Part 95E-certified radio; the IC-980 Pro Max is an amateur radio. Channels 1–7 are set to Low because GMRS limits them to 5 W ERP.',
+  channels: receiveOnly([
     ...FRS_PACK.channels.map((ch, idx) => ({
       ...ch,
       name: ch.name.replace('FRS', 'GMRS'),
-      power: (idx >= 7 && idx <= 13 ? 'Low' : 'High') as TxPower,
+      // Channels 1–7 (5 W ERP) and 8–14 (0.5 W ERP, narrow) get Low; 15–22 High
+      power: (idx <= 13 ? 'Low' : 'High') as TxPower,
       bandwidth: (idx >= 7 && idx <= 13 ? 'Narrow' : 'Wide') as Bandwidth,
     })),
     makePackChannel('GMRS RPT 15', 462.55, 467.55, 'High', 'Wide', false, 'GMRS Repeater 550 (+5 MHz)'),
@@ -140,7 +167,7 @@ export const GMRS_PACK: QuickPackDefinition = {
     makePackChannel('GMRS RPT 20', 462.675, 467.675, 'High', 'Wide', false, 'GMRS Repeater 675 (+5 MHz)'),
     makePackChannel('GMRS RPT 21', 462.7, 467.7, 'High', 'Wide', false, 'GMRS Repeater 700 (+5 MHz)'),
     makePackChannel('GMRS RPT 22', 462.725, 467.725, 'High', 'Wide', false, 'GMRS Repeater 725 (+5 MHz)'),
-  ],
+  ]),
 };
 
 /**
@@ -151,7 +178,9 @@ export const MARINE_VHF_PACK: QuickPackDefinition = {
   name: 'VHF Marine (Ch 06–72)',
   category: 'Maritime',
   description: 'Key VHF Marine distress, hailing, bridge-to-bridge, and non-commercial boat channels.',
-  channels: [
+  regulatoryNote:
+    'Receive only. Transmitting on VHF marine channels needs a marine type-accepted radio (and in many countries a licence), which the IC-980 Pro Max is not.',
+  channels: receiveOnly([
     makePackChannel('MARINE 16 DISTR', 156.8, 156.8, 'High', 'Wide', false, 'Distress, Safety & Calling'),
     makePackChannel('MARINE 09 CALL', 156.45, 156.45, 'High', 'Wide', false, 'Boater Calling Channel'),
     makePackChannel('MARINE 06 SAFE', 156.3, 156.3, 'Low', 'Wide', false, 'Intership Safety'),
@@ -161,7 +190,7 @@ export const MARINE_VHF_PACK: QuickPackDefinition = {
     makePackChannel('MARINE 69 BOAT', 156.475, 156.475, 'Low', 'Wide', false, 'Non-Commercial Recreational'),
     makePackChannel('MARINE 71 BOAT', 156.575, 156.575, 'Low', 'Wide', false, 'Non-Commercial Recreational'),
     makePackChannel('MARINE 72 BOAT', 156.625, 156.625, 'Low', 'Wide', false, 'Non-Commercial Intership'),
-  ],
+  ]),
 };
 
 export const ALL_QUICK_PACKS: readonly QuickPackDefinition[] = [
