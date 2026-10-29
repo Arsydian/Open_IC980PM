@@ -56,7 +56,7 @@ describe('toast banner', () => {
     openFile(container, new File([new Uint8Array(10)], 'broken.Ysf'));
 
     const alert = await screen.findByRole('alert', {}, { timeout: WAIT_MS });
-    expect(alert.textContent).toMatch(/Invalid \.Ysf file size/);
+    expect(alert.textContent).toBe('"broken.Ysf" is 10 bytes; a .Ysf codeplug is exactly 47,046 bytes.');
     expect(alert.getAttribute('data-kind')).toBe('error');
     expect(alert.className).toContain('border-rose-500/60');
     expect(screen.queryByRole('status')).toBeNull();

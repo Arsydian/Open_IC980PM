@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AdvancedSettings } from '../src/components/AdvancedSettings';
 import { GeneralSettings } from '../src/components/GeneralSettings';
@@ -130,5 +130,21 @@ describe('DTMF address book contacts', () => {
     // ':' is removed and the name capped at 7; the code gets the remaining 16 - 7 - 1 = 8 bytes.
     expect(state.current.dtmf.contacts[0]).toMatchObject({ name: 'BASECAM', code: '12345678' });
     expect(screen.getByLabelText('Contact 1 DTMF code')).toHaveProperty('maxLength', 8);
+  });
+});
+
+describe('RF calibration import', () => {
+  it('refuses a file that is not exactly 775 bytes instead of truncating it', async () => {
+    const state = renderAdvanced();
+    fireEvent.click(screen.getByRole('button', { name: /RF Calibration/ }));
+    const input = screen.getByLabelText('RF calibration file');
+
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array(1024)], 'other.bin')] } });
+    expect(screen.getByRole('alert').textContent).toContain('an RF calibration (.cal) file is exactly 775 bytes');
+    expect(state.current.rfCalibrationBase64).toBeUndefined();
+
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array(775).fill(7)], 'radio.cal')] } });
+    await waitFor(() => expect(state.current.rfCalibrationBase64).toBeDefined());
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

@@ -31,6 +31,7 @@ import {
   saveSnapshotToVault,
   serializeRichBundle,
 } from '../core/backupBundle';
+import { fileSizeProblem } from '../core/fileLimits';
 
 interface BackupVaultModalProps {
   isOpen: boolean;
@@ -87,10 +88,18 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
 
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
     if (!file) return;
     setErrorMsg(null);
 
-    if (file.name.toLowerCase().endsWith('.json')) {
+    const isBundle = file.name.toLowerCase().endsWith('.json');
+    const sizeProblem = fileSizeProblem(file, isBundle ? 'bundle' : 'ysf');
+    if (sizeProblem) {
+      setErrorMsg(sizeProblem);
+      return;
+    }
+
+    if (isBundle) {
       const reader = new FileReader();
       reader.onload = () => {
         try {

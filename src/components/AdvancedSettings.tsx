@@ -29,6 +29,7 @@ import type {
 } from '../types/radio';
 import { CTCSS_TONES, DCS_CODES, RF_CALIBRATION_SIZE } from '../core/constants';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../core/backupBundle';
+import { fileSizeProblem } from '../core/fileLimits';
 import { applyBandLimitEdit, isFrequencyInBand } from '../core/codeplugValidator';
 import { toneValueForType } from '../core/channelEdit';
 import { FrequencyInput } from './FrequencyInput';
@@ -70,6 +71,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
 }) => {
   const [subTab, setSubTab] = useState<AdvancedSubTab>('crossband');
   const [bandLimitError, setBandLimitError] = useState<string | null>(null);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
 
   const updateBandLimits = (limits: BandLimitsConfig) => {
     setBandLimitError(null);
@@ -111,12 +113,16 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
 
   const handleImportCalibration = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
     if (!file) return;
+    // A file of any other length is not a calibration dump; refuse it rather than truncating it
+    const sizeProblem = fileSizeProblem(file, 'calibration');
+    setCalibrationError(sizeProblem);
+    if (sizeProblem) return;
     const reader = new FileReader();
     reader.onload = () => {
       if (reader.result instanceof ArrayBuffer) {
-        const bytes = new Uint8Array(reader.result);
-        onChangeCalibration(uint8ArrayToBase64(bytes.slice(0, RF_CALIBRATION_SIZE)));
+        onChangeCalibration(uint8ArrayToBase64(new Uint8Array(reader.result)));
       }
     };
     reader.readAsArrayBuffer(file);
@@ -861,6 +867,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   <span>Import .CAL</span>
                   <input
                     type="file"
+                    aria-label="RF calibration file"
                     accept=".cal,.bin"
                     onChange={handleImportCalibration}
                     className="hidden"
@@ -880,6 +887,13 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
             </div>
 
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 font-mono text-xs">
+              {calibrationError && (
+                <p role="alert" className="flex items-start gap-1.5 text-xs text-rose-300">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  <span>{calibrationError}</span>
+                </p>
+              )}
+
               {rfCalibrationBase64 ? (
                 <div className="space-y-2">
                   <div className="text-emerald-400 font-semibold">

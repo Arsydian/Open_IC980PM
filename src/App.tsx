@@ -35,6 +35,7 @@ import {
 } from './core/ysfCodec';
 import { mergeImportedChannels } from './core/chirpCsvCodec';
 import { deserializeRichBundle, ysfDropsExtras } from './core/backupBundle';
+import { fileSizeProblem } from './core/fileLimits';
 import { TitleBar } from './components/TitleBar';
 import { ChannelGrid } from './components/ChannelGrid';
 import { GeneralSettings } from './components/GeneralSettings';
@@ -193,9 +194,17 @@ export const App: React.FC = () => {
 
   const handleQuickFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
     if (!file) return;
 
-    if (file.name.toLowerCase().endsWith('.json')) {
+    const isBundle = file.name.toLowerCase().endsWith('.json');
+    const sizeProblem = fileSizeProblem(file, isBundle ? 'bundle' : 'ysf');
+    if (sizeProblem) {
+      showToast(sizeProblem, 'error');
+      return;
+    }
+
+    if (isBundle) {
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -226,7 +235,6 @@ export const App: React.FC = () => {
       };
       reader.readAsArrayBuffer(file);
     }
-    e.target.value = '';
   };
 
   return (

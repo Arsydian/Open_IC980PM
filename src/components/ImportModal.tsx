@@ -41,6 +41,7 @@ import {
   rateLimitCooldownSeconds,
 } from '../core/repeaterBookClient';
 import { parseChirpOrCpsCsv } from '../core/chirpCsvCodec';
+import { fileSizeProblem } from '../core/fileLimits';
 import { ALL_QUICK_PACKS, QuickPackDefinition } from '../core/quickPacks';
 
 interface ImportModalProps {
@@ -237,7 +238,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
     if (!file) return;
+    const sizeProblem = fileSizeProblem(file, 'csv');
+    if (sizeProblem) {
+      setCsvPreview([]);
+      setCsvError(sizeProblem);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {

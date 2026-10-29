@@ -21,6 +21,7 @@ import {
   decodeBootLogoPayloadToRgba,
   encodeRgbaToBootLogoPayload,
 } from '../core/bmpLogoCodec';
+import { fileSizeProblem } from '../core/fileLimits';
 import { flashBootLogoViaWebHid } from '../core/webHidTransport';
 
 /** Longest boot-screen title: the radio callsign field holds 14 characters. */
@@ -140,7 +141,11 @@ export const BootLogoStudio: React.FC<BootLogoStudioProps> = ({ defaultCallsign 
 
   const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
     if (!file) return;
+    const sizeProblem = fileSizeProblem(file, 'image');
+    setFlashError(sizeProblem);
+    if (sizeProblem) return;
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== 'string') return;

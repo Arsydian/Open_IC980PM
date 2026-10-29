@@ -97,6 +97,12 @@ export function decodeBootLogoPayloadToRgba(payload: Uint8Array): {
   }
   const height = (payload[0] << 8) | payload[1];
   const width = (payload[2] << 8) | payload[3];
+  // The header is untrusted: refuse dimensions the payload does not actually contain
+  if (width === 0 || height === 0 || 4 + width * height * 2 > payload.byteLength) {
+    throw new Error(
+      `Boot logo header says ${width}x${height}, but the payload holds only ${payload.byteLength} bytes.`
+    );
+  }
   const rgba = new Uint8ClampedArray(width * height * 4);
 
   let src = 4;
