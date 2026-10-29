@@ -7,6 +7,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
+import { useDialogA11y } from './useDialogA11y';
 import {
   X,
   Download,
@@ -62,6 +63,8 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
   );
   const writeBlocked = mode === 'write' && writeIssues.length > 0;
 
+  const dialogRef = useDialogA11y(isOpen, onClose, !isRunning);
+
   if (!isOpen) return null;
 
   const handleStartTransfer = async () => {
@@ -109,13 +112,20 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="RadioSyncModal-title"
+        tabIndex={-1}
+        className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden focus:outline-none"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <Usb className="w-5 h-5 text-cyan-400" />
             <div>
-              <h2 className="text-base font-bold text-slate-100">
+              <h2 id="RadioSyncModal-title" className="text-base font-bold text-slate-100">
                 {mode === 'read' ? 'Read From Radio (USB HID)' : 'Write To Radio (USB HID)'}
               </h2>
               <p className="text-xs text-slate-400">
@@ -125,6 +135,7 @@ export const RadioSyncModal: React.FC<RadioSyncModalProps> = ({
           </div>
 
           <button
+            aria-label="Close"
             type="button"
             disabled={isRunning}
             onClick={onClose}

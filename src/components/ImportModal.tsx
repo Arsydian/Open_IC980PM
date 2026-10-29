@@ -10,6 +10,7 @@
  */
 
 import React, { useState } from 'react';
+import { useDialogA11y } from './useDialogA11y';
 import {
   X,
   Globe,
@@ -126,6 +127,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [csvText, setCsvText] = useState<string>('');
   const [csvPreview, setCsvPreview] = useState<ChannelRecord[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
+
+  const dialogRef = useDialogA11y(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -274,11 +277,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ImportModal-title"
+        tabIndex={-1}
+        className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden focus:outline-none"
+      >
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+            <h2 id="ImportModal-title" className="text-base font-bold text-slate-100 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-cyan-400" />
               <span>Import Channels — RepeaterBook API, CHIRP CSV & Quick-Packs</span>
             </h2>
@@ -287,6 +297,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             </p>
           </div>
           <button
+            aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"

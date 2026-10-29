@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useDialogA11y } from './useDialogA11y';
 import {
   X,
   ShieldCheck,
@@ -64,6 +65,8 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
         });
     }
   }, [isOpen]);
+
+  const dialogRef = useDialogA11y(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -177,11 +180,18 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="BackupVaultModal-title"
+        tabIndex={-1}
+        className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden focus:outline-none"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+            <h2 id="BackupVaultModal-title" className="text-base font-bold text-slate-100 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-amber-400" />
               <span>Backup, Restore & Automatic Rollback Vault</span>
             </h2>
@@ -190,6 +200,7 @@ export const BackupVaultModal: React.FC<BackupVaultModalProps> = ({
             </p>
           </div>
           <button
+            aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
