@@ -9,8 +9,14 @@ import {
   REPEATERBOOK_TOKEN_HEADER,
   clearRepeaterBookCache,
   queryRepeaterBookApi,
+  rateLimitCooldownSeconds,
+  rateLimitMessage,
 } from '../src/core/repeaterBookClient';
-import { REDIRECT_STOPPED_MESSAGE, fetchRepeaterBookJson } from '../electron/repeaterBookProxy';
+import {
+  REDIRECT_STOPPED_MESSAGE,
+  fetchRepeaterBookJson,
+  rateLimitMessage as proxyRateLimitMessage,
+} from '../electron/repeaterBookProxy';
 import type { RepeaterBookQuery } from '../src/types/radio';
 
 const TOKEN = 'rbuapp_secret123';
@@ -92,5 +98,25 @@ describe('Electron proxy requests', () => {
       await expect(fetchRepeaterBookJson(url, TOKEN, UA, fetchMock)).rejects.toThrow(/Access denied/);
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('HTTP 429 handling', () => {
+  it('reports the server Retry-After and locks searches at least 60 s', async () => {
+    const now = Date.parse('2026-10-28T12:00:00Z');
+    expect(rateLimitMessage('120', now)).toContain('Retry after 120 seconds.');
+    expect(rateLimitMessage('Wed, 28 Oct 2026 12:05:00 GMT', now)).toContain('Retry after 300 seconds.');
+    expect(rateLimitMessage(null, now)).not.toContain('Retry after');
+    expect(proxyRateLimitMessage('120', now)).toBe(rateLimitMessage('120', now));
+
+    expect(rateLimitCooldownSeconds(rateLimitMessage('600', now))).toBe(600);
+    expect(rateLimitCooldownSeconds(rateLimitMessage('5', now))).toBe(60);
+    expect(rateLimitCooldownSeconds(rateLimitMessage(null, now))).toBe(60);
+    expect(rateLimitCooldownSeconds('RepeaterBook API returned HTTP 500')).toBe(0);
+  });
+
+  it('passes Retry-After through from a 429 response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 429, headers: { 'Retry-After': '900' } })));
+    await expect(queryRepeaterBookApi(query)).rejects.toThrow('Retry after 900 seconds.');
   });
 });

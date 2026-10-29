@@ -63,9 +63,25 @@ export async function fetchRepeaterBookJson(
       );
     }
     if (response.status === 429) {
-      throw new Error('RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.');
+      throw new Error(rateLimitMessage(response.headers.get('Retry-After')));
     }
     throw new Error(`RepeaterBook API returned HTTP ${response.status}`);
   }
   return response.json();
+}
+
+/**
+ * Error text for HTTP 429, including the server's Retry-After (seconds or HTTP date) when sent.
+ * Kept in step with `rateLimitMessage` in src/core/repeaterBookClient.ts, which parses it back.
+ */
+export function rateLimitMessage(retryAfter: string | null, now: number = Date.now()): string {
+  let seconds: number | null = null;
+  if (retryAfter && /^\d+$/.test(retryAfter.trim())) {
+    seconds = parseInt(retryAfter.trim(), 10);
+  } else if (retryAfter && !Number.isNaN(Date.parse(retryAfter))) {
+    seconds = Math.max(0, Math.ceil((Date.parse(retryAfter) - now) / 1000));
+  }
+  return seconds !== null
+    ? `RepeaterBook API rate limit exceeded (HTTP 429). Retry after ${seconds} seconds.`
+    : 'RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.';
 }

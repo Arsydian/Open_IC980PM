@@ -21,6 +21,35 @@ import { createEmptyChannel } from './ysfCodec';
  */
 export const REPEATERBOOK_TOKEN_HEADER = 'X-RB-App-Token';
 
+/** Shortest search lockout after an HTTP 429, used when RepeaterBook sends no longer Retry-After. */
+export const MIN_RATE_LIMIT_COOLDOWN_SECONDS = 60;
+
+/**
+ * Error text for HTTP 429, including the server's Retry-After (seconds or HTTP date) when sent.
+ * Mirrors `rateLimitMessage` in electron/repeaterBookProxy.ts.
+ */
+export function rateLimitMessage(retryAfter: string | null, now: number = Date.now()): string {
+  let seconds: number | null = null;
+  if (retryAfter && /^\d+$/.test(retryAfter.trim())) {
+    seconds = parseInt(retryAfter.trim(), 10);
+  } else if (retryAfter && !Number.isNaN(Date.parse(retryAfter))) {
+    seconds = Math.max(0, Math.ceil((Date.parse(retryAfter) - now) / 1000));
+  }
+  return seconds !== null
+    ? `RepeaterBook API rate limit exceeded (HTTP 429). Retry after ${seconds} seconds.`
+    : 'RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.';
+}
+
+/**
+ * How long to lock RepeaterBook searches after `errorMessage`: `0` unless it is a 429, otherwise the
+ * Retry-After it carries, but never less than `MIN_RATE_LIMIT_COOLDOWN_SECONDS`.
+ */
+export function rateLimitCooldownSeconds(errorMessage: string): number {
+  if (!errorMessage.includes('429')) return 0;
+  const retryAfter = /Retry after (\d+) seconds/.exec(errorMessage);
+  return Math.max(MIN_RATE_LIMIT_COOLDOWN_SECONDS, retryAfter ? parseInt(retryAfter[1], 10) : 0);
+}
+
 /** Supported frequency band identifiers for RepeaterBook classification and filtering. */
 export type RepeaterBandId = '2m' | '70cm' | 'GMRS' | '1.25m' | 'VHF Ext' | 'UHF Ext';
 
@@ -578,7 +607,7 @@ export async function queryRepeaterBookApi(
         );
       }
       if (response.status === 429) {
-        throw new Error('RepeaterBook API rate limit exceeded (HTTP 429). Please wait a moment before trying again.');
+        throw new Error(rateLimitMessage(response.headers.get('Retry-After')));
       }
       throw new Error(`RepeaterBook API returned HTTP ${response.status}`);
     }

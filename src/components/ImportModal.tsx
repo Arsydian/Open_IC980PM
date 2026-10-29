@@ -37,6 +37,7 @@ import {
   RepeaterBandId,
   US_CA_STATES,
   queryRepeaterBookApi,
+  rateLimitCooldownSeconds,
 } from '../core/repeaterBookClient';
 import { parseChirpOrCpsCsv } from '../core/chirpCsvCodec';
 import { ALL_QUICK_PACKS, QuickPackDefinition } from '../core/quickPacks';
@@ -184,8 +185,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to query RepeaterBook API.';
       setRbError(msg);
-      if (msg.includes('429')) {
-        setCooldownSeconds(60);
+      const cooldown = rateLimitCooldownSeconds(msg);
+      if (cooldown > 0) {
+        setCooldownSeconds(cooldown);
       }
     } finally {
       setIsLoadingRb(false);
