@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-10b981?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-f59e0b?style=flat-square)
 
-**Open_IC980PM** (`v1.1.0`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from clean-room reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
+**Open_IC980PM** (`v1.1.0`) is a clean, modern, cross-platform radio programming studio for the **HIROYASU IC-980 Pro Max** dual-band transceiver. Built from reverse engineering of the factory Customer Programming Software (CPS), it supports direct **USB HID radio reading and writing** (`ASER _HID` / `ASER-471`), 1:1 lossless **`.Ysf` (`47,046`-byte) codeplug files**, live **RepeaterBook API** imports, **CHIRP CSV** interoperability, and an automated **Rollback Vault** for pre-write EEPROM safety snapshots.
 
 ---
 
