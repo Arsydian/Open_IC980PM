@@ -67,8 +67,140 @@ export interface RepeaterBookRawEntry {
   'FM Analog'?: string;
   DMR?: string;
   'D-Star'?: string;
+  NXDN?: string;
+  'APCO P-25'?: string;
+  M17?: string;
+  Tetra?: string;
   'System Fusion'?: string;
   Notes?: string;
+}
+
+/**
+ * The names each field may arrive under. The API wiki lists fields only by display label
+ * ("Input Frequency", "Analog Capable", ...), so those labels are accepted after the JSON keys
+ * RepeaterBook's export has used.
+ */
+const REPEATERBOOK_FIELD_ALIASES: Record<keyof RepeaterBookRawEntry, readonly string[]> = {
+  'State ID': ['State ID', 'State ID (FIPS)'],
+  'Rptr ID': ['Rptr ID', 'Repeater ID'],
+  Frequency: ['Frequency'],
+  'Input Freq': ['Input Freq', 'Input Frequency'],
+  PL: ['PL', 'PL/CTCSS Uplink'],
+  TSQ: ['TSQ', 'PL/CTCSS TSQ Downlink'],
+  Lat: ['Lat', 'Latitude'],
+  Long: ['Long', 'Longitude'],
+  Callsign: ['Callsign'],
+  'Nearest City': ['Nearest City', 'Location/Nearest City'],
+  Landmark: ['Landmark'],
+  County: ['County', 'County (US only)'],
+  State: ['State'],
+  Country: ['Country'],
+  Use: ['Use', 'Use/Membership'],
+  'Operational Status': ['Operational Status'],
+  'FM Analog': ['FM Analog', 'Analog Capable'],
+  DMR: ['DMR', 'DMR Capable'],
+  'D-Star': ['D-Star', 'D-Star Capable'],
+  NXDN: ['NXDN', 'NXDN Capable'],
+  'APCO P-25': ['APCO P-25', 'P-25 Capable'],
+  M17: ['M17'],
+  Tetra: ['Tetra', 'Tetra Capable'],
+  'System Fusion': ['System Fusion', 'Yaesu System Fusion Capable'],
+  Notes: ['Notes'],
+};
+
+/** Fields without which no repeater can be programmed, with how to name them to the user. */
+const REQUIRED_REPEATERBOOK_FIELDS: ReadonlyArray<[keyof RepeaterBookRawEntry, string]> = [
+  ['Frequency', 'output frequency'],
+  ['Input Freq', 'input frequency'],
+];
+
+/** Digital modes RepeaterBook flags per repeater. */
+const DIGITAL_MODE_FIELDS: ReadonlyArray<keyof RepeaterBookRawEntry> = [
+  'DMR',
+  'D-Star',
+  'NXDN',
+  'APCO P-25',
+  'M17',
+  'Tetra',
+  'System Fusion',
+];
+
+/** Thrown when a RepeaterBook response is not laid out the way this app reads it. */
+export const REPEATERBOOK_FORMAT_MESSAGE =
+  "RepeaterBook's response wasn't in a format this app recognises, so nothing was imported. Please report this at https://github.com/Arsydian/Open_IC980PM/issues.";
+
+/** Copies a raw result into `RepeaterBookRawEntry` keys, taking the first alias that has a value. */
+function canonicalizeEntry(raw: Record<string, unknown>): RepeaterBookRawEntry {
+  const entry: RepeaterBookRawEntry = {};
+  for (const [field, aliases] of Object.entries(REPEATERBOOK_FIELD_ALIASES) as [
+    keyof RepeaterBookRawEntry,
+    readonly string[],
+  ][]) {
+    for (const alias of aliases) {
+      const value = raw[alias];
+      if (typeof value === 'string' && value.trim()) {
+        entry[field] = value;
+      } else if (typeof value === 'number' && Number.isFinite(value)) {
+        entry[field] = String(value);
+      } else if (typeof value === 'boolean') {
+        entry[field] = value ? 'Yes' : 'No';
+      } else {
+        continue;
+      }
+      break;
+    }
+  }
+  return entry;
+}
+
+/**
+ * The repeaters in a RepeaterBook response (`{ results: [...] }` or a bare array), with field
+ * names normalised. Throws rather than returning nothing when the layout or the frequency fields
+ * aren't recognised, so a format change can't pass for "no repeaters found".
+ */
+export function extractRepeaterBookEntries(payload: unknown): RepeaterBookRawEntry[] {
+  let items: unknown[];
+  if (Array.isArray(payload)) {
+    items = payload;
+  } else if (payload && typeof payload === 'object') {
+    const obj = payload as Record<string, unknown>;
+    if (Array.isArray(obj.results)) {
+      items = obj.results;
+    } else if (obj.count === 0 || obj.count === '0') {
+      return [];
+    } else {
+      const serverMessage = [obj.message, obj.error].find(
+        (m): m is string => typeof m === 'string' && m.trim() !== ''
+      );
+      throw new Error(serverMessage ? `RepeaterBook: ${serverMessage.trim().slice(0, 200)}` : REPEATERBOOK_FORMAT_MESSAGE);
+    }
+  } else {
+    throw new Error(REPEATERBOOK_FORMAT_MESSAGE);
+  }
+  if (items.length === 0) return [];
+
+  const rows = items.filter(
+    (item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item)
+  );
+  // A field counts as present when any row has the key, even blank, so one repeater with a
+  // blank input frequency is skipped later instead of failing the whole search
+  const missing = REQUIRED_REPEATERBOOK_FIELDS.filter(
+    ([field]) => !rows.some((row) => REPEATERBOOK_FIELD_ALIASES[field].some((alias) => alias in row))
+  ).map(([, label]) => label);
+  if (rows.length === 0 || missing.length > 0) {
+    throw new Error(missing.length > 0 ? `${REPEATERBOOK_FORMAT_MESSAGE} Missing: ${missing.join(', ')}.` : REPEATERBOOK_FORMAT_MESSAGE);
+  }
+  return rows.map(canonicalizeEntry);
+}
+
+/**
+ * Whether a repeater carries FM analog. Without an analog field, a repeater that lists any digital
+ * mode counts as digital-only, so a missing field can't turn a DMR repeater into an FM channel.
+ */
+function isFmAnalog(entry: RepeaterBookRawEntry): boolean {
+  const analog = (entry['FM Analog'] || '').trim().toLowerCase();
+  if (analog) return analog !== 'no';
+  return !DIGITAL_MODE_FIELDS.some((field) => (entry[field] || '').trim().toLowerCase() === 'yes');
 }
 
 /** Normalized repeater candidate with computed distance and formatted `City - Callsign` channel name. */
@@ -438,9 +570,8 @@ export function filterAndNormalizeRepeaterBookResults(
       }
     }
 
-    // 2. Check FM Analog capability (default to true if 'FM Analog' is 'Yes' or not explicitly 'No')
-    const fmAnalog = (entry['FM Analog'] || 'Yes').trim().toLowerCase();
-    if (fmAnalog === 'no') {
+    // 2. Check FM Analog capability
+    if (!isFmAnalog(entry)) {
       continue;
     }
 
@@ -615,11 +746,7 @@ export async function queryRepeaterBookApi(
       rawArray = cached.data;
     } else {
       const jsonPayload: unknown = await window.api!.fetchRepeaterBookJson(url, query.apiToken);
-      rawArray = Array.isArray((jsonPayload as { results?: RepeaterBookRawEntry[] })?.results)
-        ? (jsonPayload as { results: RepeaterBookRawEntry[] }).results
-        : Array.isArray(jsonPayload)
-        ? (jsonPayload as RepeaterBookRawEntry[])
-        : [];
+      rawArray = extractRepeaterBookEntries(jsonPayload);
       cacheResponse(cacheKey, rawArray, Date.now());
     }
     for (const entry of rawArray) {

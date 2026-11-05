@@ -11,7 +11,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   REPEATERBOOK_CACHE_MAX_ENTRIES,
   REPEATERBOOK_DESKTOP_ONLY_MESSAGE,
+  REPEATERBOOK_FORMAT_MESSAGE,
   clearRepeaterBookCache,
+  extractRepeaterBookEntries,
+  filterAndNormalizeRepeaterBookResults,
   isRepeaterBookAvailable,
   queryRepeaterBookApi,
   rateLimitCooldownSeconds,
@@ -76,7 +79,7 @@ describe('RepeaterBook client', () => {
   });
 
   it('makes a separate stype=gmrs search for GMRS and merges the results once', async () => {
-    const amateur = { 'State ID': '06', 'Rptr ID': '1', Frequency: '146.9400', 'Nearest City': 'Vacaville', Lat: '38.35', Long: '-121.98', Callsign: 'W6AAA' };
+    const amateur = { 'State ID': '06', 'Rptr ID': '1', Frequency: '146.9400', 'Input Freq': '146.3400', 'Nearest City': 'Vacaville', Lat: '38.35', Long: '-121.98', Callsign: 'W6AAA' };
     const gmrs = { 'State ID': '06', 'Rptr ID': '9', Frequency: '462.6750', 'Input Freq': '467.6750', 'Nearest City': 'Vacaville', Lat: '38.36', Long: '-121.97', Callsign: 'WRGMRS' };
     const fetchRepeaterBookJson = vi.fn(async (url: string) => ({ results: url.includes('stype=gmrs') ? [gmrs, amateur] : [amateur] }));
     vi.stubGlobal('window', { api: { fetchRepeaterBookJson } });
@@ -103,6 +106,76 @@ describe('RepeaterBook client', () => {
       await queryRepeaterBookApi({ ...query, city: `Town ${i}` });
     }
     expect(repeaterBookCacheSize()).toBe(REPEATERBOOK_CACHE_MAX_ENTRIES);
+  });
+});
+
+describe('RepeaterBook response format', () => {
+  /** Answers every search with `payload`. */
+  function respondWith(payload: unknown) {
+    const fetchRepeaterBookJson = vi.fn(async () => payload);
+    vi.stubGlobal('window', { api: { fetchRepeaterBookJson } });
+    return fetchRepeaterBookJson;
+  }
+
+  it('reads fields named with the API wiki labels, and numbers as well as strings', async () => {
+    respondWith({
+      results: [
+        {
+          'State ID (FIPS)': '47',
+          'Repeater ID': '7',
+          Frequency: 146.94,
+          'Input Frequency': '146.3400',
+          'PL/CTCSS Uplink': '107.2',
+          'PL/CTCSS TSQ Downlink': '',
+          'Location/Nearest City': 'Nashville',
+          'Analog Capable': 'Yes',
+          Callsign: 'w4abc',
+        },
+      ],
+    });
+
+    const [repeater] = await queryRepeaterBookApi(query);
+    expect(repeater.callsign).toBe('W4ABC');
+    expect(repeater.rxFreqHz).toBe(146_940_000);
+    expect(repeater.txFreqHz).toBe(146_340_000);
+    expect(repeater.txToneValue).toBe(107.2);
+    expect(repeater.rptrId).toBe('7');
+    expect(repeater.city).toBe('Nashville');
+  });
+
+  it('fails loudly, and caches nothing, when the layout or frequency fields are not recognised', async () => {
+    respondWith({ data: [{ Frequency: '146.94', 'Input Freq': '146.34' }] });
+    await expect(queryRepeaterBookApi(query)).rejects.toThrow(REPEATERBOOK_FORMAT_MESSAGE);
+
+    respondWith({ results: [{ Frequency: '146.94', Offset: '-0.6', 'Nearest City': 'Nashville' }] });
+    await expect(queryRepeaterBookApi(query)).rejects.toThrow('Missing: input frequency.');
+
+    expect(repeaterBookCacheSize()).toBe(0);
+  });
+
+  it('reports an error message sent in place of results, and accepts an explicit empty result', async () => {
+    respondWith({ status: 'error', message: 'Token not bound to this application' });
+    await expect(queryRepeaterBookApi(query)).rejects.toThrow('RepeaterBook: Token not bound to this application');
+
+    expect(extractRepeaterBookEntries({ count: 0 })).toEqual([]);
+    expect(extractRepeaterBookEntries({ count: 0, results: [] })).toEqual([]);
+  });
+
+  it('keeps one repeater with a blank input frequency from failing the whole search', () => {
+    const entries = extractRepeaterBookEntries([
+      { Frequency: '146.94', 'Input Freq': '146.34' },
+      { Frequency: '147.00', 'Input Freq': '' },
+    ]);
+    expect(entries).toHaveLength(2);
+  });
+
+  it('treats a repeater listing a digital mode as digital-only when the analog field is missing', () => {
+    const entries = extractRepeaterBookEntries([
+      { Frequency: '441.0000', 'Input Freq': '446.0000', 'Nearest City': 'Nashville', Callsign: 'W4DMR', DMR: 'Yes' },
+      { Frequency: '146.9400', 'Input Freq': '146.3400', 'Nearest City': 'Nashville', Callsign: 'W4FM', DMR: 'No' },
+    ]);
+    const results = filterAndNormalizeRepeaterBookResults(entries, query);
+    expect(results.map((r) => r.callsign)).toEqual(['W4FM']);
   });
 });
 
