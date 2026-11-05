@@ -10,10 +10,13 @@ import {
   buildRepeaterBookApiUrl,
   buildRepeaterBookApiUrls,
   US_CA_STATES,
+  REPEATERBOOK_AREA_REQUIRED_MESSAGE,
   cityMatchesFilter,
   clearRepeaterBookCache,
+  entriesInCity,
   filterAndNormalizeRepeaterBookResults,
   formatCityCallsignName,
+  locateCity,
   radiusNotice,
   RepeaterBookRawEntry,
 } from '../src/core/repeaterBookClient';
@@ -377,7 +380,41 @@ describe('RepeaterBook city search', () => {
     expect(cityMatchesFilter('san francisco', 'francisco')).toBe(true);
     expect(cityMatchesFilter('nashville', 'nashville tn')).toBe(true);
     expect(cityMatchesFilter('ada', 'adams')).toBe(false);
+    expect(cityMatchesFilter('canadian', 'ada')).toBe(false);
     expect(cityMatchesFilter('', 'nashville')).toBe(false);
+  });
+
+  it('keeps every repeater within the radius, not just those listed under the city', () => {
+    const raw: RepeaterBookRawEntry[] = [
+      { Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4NSH' },
+      { Frequency: '147.30', 'Input Freq': '147.90', 'Nearest City': 'Brentwood', Lat: '36.03', Long: '-86.78', Callsign: 'W4BRT' },
+      { Frequency: '444.50', 'Input Freq': '449.50', 'Nearest City': 'Murfreesboro', Lat: '35.85', Long: '-86.39', Callsign: 'W4MBO' },
+      { Frequency: '145.29', 'Input Freq': '144.69', 'Nearest City': 'Knoxville', Lat: '35.96', Long: '-83.92', Callsign: 'W4KNX' },
+    ];
+    const res = filterAndNormalizeRepeaterBookResults(raw, nashvilleQuery);
+    expect(res.map((r) => r.callsign)).toEqual(['W4NSH', 'W4BRT']);
+    expect(res[1].distanceMiles).toBeCloseTo(9, 0);
+
+    const wider = filterAndNormalizeRepeaterBookResults(raw, { ...nashvilleQuery, radius: 40 });
+    expect(wider.map((r) => r.callsign)).toEqual(['W4NSH', 'W4BRT', 'W4MBO']);
+  });
+
+  it('finds the city by exact name first, ignoring case, accents and punctuation', () => {
+    const at = (city: string, lat = '1', lon = '1'): RepeaterBookRawEntry => ({ 'Nearest City': city, Lat: lat, Long: lon });
+    const statewide = [at('Ada'), at('Canadian'), at('Adamsville'), at('St. Louis'), at('Zürich')];
+    expect(entriesInCity(statewide, 'ada').map((e) => e['Nearest City'])).toEqual(['Ada']);
+    expect(entriesInCity(statewide, 'St Louis').map((e) => e['Nearest City'])).toEqual(['St. Louis']);
+    expect(entriesInCity(statewide, 'Zurich').map((e) => e['Nearest City'])).toEqual(['Zürich']);
+    expect(entriesInCity(statewide, 'Smallville')).toEqual([]);
+  });
+
+  it('places the city at the median position, so one mislocated listing does not move it', () => {
+    const raw: RepeaterBookRawEntry[] = [
+      { 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78' },
+      { 'Nearest City': 'Nashville', Lat: '36.17', Long: '-86.77' },
+      { 'Nearest City': 'Nashville', Lat: '45.00', Long: '-120.00' },
+    ];
+    expect(locateCity(raw, 'Nashville')).toEqual({ lat: 36.17, lon: -86.78 });
   });
 });
 
@@ -461,45 +498,53 @@ describe('RepeaterBook query parameters (documented on the API wiki)', () => {
     return { endpoint: u.origin + u.pathname, params: Object.fromEntries(u.searchParams) };
   };
 
-  it('North America: state_id (FIPS) and city on export.php', () => {
+  // RepeaterBook's `city` returns only repeaters listed under exactly that city, which left out
+  // the neighbouring towns inside the radius, so the city is never sent
+  it('North America: the whole state by state_id (FIPS) on export.php, without the city', () => {
     const { endpoint, params } = paramsOf(
       buildRepeaterBookApiUrl({ region: 'us_ca', state: '47', city: 'Nashville', country: 'United States', radius: 25, maxResults: 50 })
     );
     expect(endpoint).toBe('https://www.repeaterbook.com/api/export.php');
-    expect(params).toEqual({ state_id: '47', city: 'Nashville' });
+    expect(params).toEqual({ state_id: '47' });
+  });
+
+  it('refuses to search without a state or country instead of asking for everything', () => {
+    expect(() => buildRepeaterBookApiUrl({ region: 'us_ca', state: ' ', city: 'Nashville', maxResults: 50 })).toThrow(
+      REPEATERBOOK_AREA_REQUIRED_MESSAGE
+    );
+    expect(() => buildRepeaterBookApiUrl({ region: 'row', country: '', city: 'London', maxResults: 50 })).toThrow(
+      REPEATERBOOK_AREA_REQUIRED_MESSAGE
+    );
   });
 
   it('Canada uses the FIPS 10-4 province code as state_id', () => {
     const { params } = paramsOf(buildRepeaterBookApiUrl({ region: 'us_ca', state: 'CA08', city: 'Ottawa', maxResults: 50 }));
-    expect(params).toEqual({ state_id: 'CA08', city: 'Ottawa' });
+    expect(params).toEqual({ state_id: 'CA08' });
     expect(US_CA_STATES.filter((s) => s.id.startsWith('CA')).map((s) => s.id)).toEqual([
       'CA01', 'CA02', 'CA03', 'CA04', 'CA05', 'CA07', 'CA08', 'CA09', 'CA10', 'CA11', 'CA12', 'CA13', 'CA14',
     ]);
   });
 
-  it('Rest of world: country and city on exportROW.php, never state_id', () => {
+  it('Rest of world: the whole country on exportROW.php, never state_id or the city', () => {
     const { endpoint, params } = paramsOf(
       buildRepeaterBookApiUrl({ region: 'row', country: 'Switzerland', state: '06', city: 'Zurich', maxResults: 50 })
     );
     expect(endpoint).toBe('https://www.repeaterbook.com/api/exportROW.php');
-    expect(params).toEqual({ country: 'Switzerland', city: 'Zurich' });
+    expect(params).toEqual({ country: 'Switzerland' });
   });
 
   it('GMRS uses a separate stype=gmrs search, only when GMRS is enabled', () => {
     const base = { region: 'us_ca' as const, state: '06', city: 'Vacaville', maxResults: 50 };
-    expect(buildRepeaterBookApiUrls(base).map((u) => paramsOf(u).params)).toEqual([{ state_id: '06', city: 'Vacaville' }]);
+    expect(buildRepeaterBookApiUrls(base).map((u) => paramsOf(u).params)).toEqual([{ state_id: '06' }]);
     expect(
       buildRepeaterBookApiUrls({ ...base, bands: { include2m: true, include70cm: true, includeGmrs: true } }).map((u) => paramsOf(u).params)
-    ).toEqual([
-      { state_id: '06', city: 'Vacaville' },
-      { state_id: '06', city: 'Vacaville', stype: 'gmrs' },
-    ]);
+    ).toEqual([{ state_id: '06' }, { state_id: '06', stype: 'gmrs' }]);
     expect(
       buildRepeaterBookApiUrls({ ...base, bands: { include2m: false, include70cm: false, includeGmrs: true } }).map((u) => paramsOf(u).params)
-    ).toEqual([{ state_id: '06', city: 'Vacaville', stype: 'gmrs' }]);
+    ).toEqual([{ state_id: '06', stype: 'gmrs' }]);
     // stype is not an exportROW.php parameter
     expect(buildRepeaterBookApiUrls({ region: 'row', country: 'Germany', city: 'Berlin', maxResults: 50, bands: { includeGmrs: true } }))
-      .toEqual(['https://www.repeaterbook.com/api/exportROW.php?country=Germany&city=Berlin']);
+      .toEqual(['https://www.repeaterbook.com/api/exportROW.php?country=Germany']);
   });
 
   it('never sends undocumented parameters', () => {

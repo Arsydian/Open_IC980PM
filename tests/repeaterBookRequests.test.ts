@@ -104,10 +104,27 @@ describe('RepeaterBook client', () => {
     await queryRepeaterBookApi(query);
     expect(bridge).toHaveBeenCalledTimes(1);
 
+    // Another city in the same state is answered from the same state-wide response
+    await queryRepeaterBookApi({ ...query, city: 'Franklin' });
+    expect(bridge).toHaveBeenCalledTimes(1);
+
     for (let i = 0; i < 30; i++) {
-      await queryRepeaterBookApi({ ...query, city: `Town ${i}` });
+      await queryRepeaterBookApi({ ...query, state: String(i + 1).padStart(2, '0') });
     }
     expect(repeaterBookCacheSize()).toBe(REPEATERBOOK_CACHE_MAX_ENTRIES);
+  });
+
+  it('says so when no repeater in the state is listed under the typed city', async () => {
+    vi.stubGlobal('window', {
+      api: {
+        fetchRepeaterBookJson: vi.fn(async () => ({
+          results: [{ Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78' }],
+        })),
+      },
+    });
+    await expect(queryRepeaterBookApi({ ...query, city: 'Smallville' })).rejects.toThrow(
+      'RepeaterBook lists no repeaters under "Smallville" in Tennessee'
+    );
   });
 });
 

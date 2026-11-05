@@ -140,14 +140,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setRbError(null);
     setRbNotice(null);
 
+    if (region === 'row' && !rowCountry.trim()) {
+      setRbError('Enter a country to search.');
+      setIsLoadingRb(false);
+      return;
+    }
     if (!cityFilter.trim()) {
-      setRbError('City is required for state/jurisdiction queries to anchor the search and limit query size.');
+      setRbError('Enter a city or town: the search radius is measured from it.');
       setIsLoadingRb(false);
       return;
     }
     const parsedRadius = parseFloat(radius);
     if (!Number.isFinite(parsedRadius) || parsedRadius <= 0) {
-      setRbError('A search radius is required to constrain the query around the selected city.');
+      setRbError('Enter a search radius around the city.');
       setIsLoadingRb(false);
       return;
     }
@@ -611,7 +616,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
                   <div className="md:col-span-4 -mt-1">
                     <p className="text-[11px] text-slate-400 italic">
-                      * City and radius are required to anchor the search and constrain query size around your local area.
+                      * The whole state, province or country is searched, and every repeater within the radius of your city is kept. Your city is placed using the repeaters RepeaterBook lists under it. Repeaters across a state or country border are not included.
                     </p>
                   </div>
 

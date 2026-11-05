@@ -5,9 +5,9 @@
  *
  * Implements User Requirement #5 & #6:
  * - Selector for North America (`us_ca` -> `export.php`) vs. Rest of World (`row` -> `exportROW.php`)
- * - Queries use only parameters the RepeaterBook API wiki documents: `state_id` (FIPS) + `city` on
- *   export.php (plus `stype=gmrs` for GMRS), `country` + `city` on exportROW.php; the radius around
- *   the city is applied in the app
+ * - Queries use only parameters the RepeaterBook API wiki documents: `state_id` (FIPS) on
+ *   export.php (plus `stype=gmrs` for GMRS), `country` on exportROW.php; the city is located from
+ *   the repeaters listed under it and the radius around it is applied in the app
  * - Option to limit the returned list to a maximum number (`maxResults`, up to 100)
  * - Automatic filtering to 2m (`144–148 MHz`) & 70cm (`420–450 MHz`) FM Analog repeaters
  * - Channel name formatted as `City - Callsign` (truncated cleanly to 16 characters)
@@ -409,8 +409,15 @@ export function buildRepeaterBookApiUrls(query: RepeaterBookQuery): string[] {
   return urls;
 }
 
+/** Thrown when a search names no state/province (US/Canada) or country (rest of world). */
+export const REPEATERBOOK_AREA_REQUIRED_MESSAGE =
+  'Choose a state or province (US/Canada) or enter a country (rest of world) to search.';
+
 /**
- * Builds the RepeaterBook API URL for a given `RepeaterBookQuery` and service.
+ * Builds the RepeaterBook API URL for a given `RepeaterBookQuery` and service. It asks for the
+ * whole state/province or country: RepeaterBook's `city` parameter returns only repeaters listed
+ * under exactly that city, so the radius around the city is applied in the app. Throws
+ * `REPEATERBOOK_AREA_REQUIRED_MESSAGE` without a state or country, rather than asking for everything.
  */
 export function buildRepeaterBookApiUrl(query: RepeaterBookQuery, service: RepeaterBookService = 'amateur'): string {
   const baseUrl =
@@ -419,19 +426,14 @@ export function buildRepeaterBookApiUrl(query: RepeaterBookQuery, service: Repea
       : 'https://www.repeaterbook.com/api/export.php';
 
   // Only parameters the RepeaterBook API wiki documents for each endpoint:
-  //   export.php:    state_id (FIPS), city, stype (required for GMRS searches)
-  //   exportROW.php: country, city
+  //   export.php:    state_id (FIPS), stype (required for GMRS searches)
+  //   exportROW.php: country
   const params = new URLSearchParams();
-  if (query.region === 'row') {
-    if (query.country && query.country.trim()) {
-      params.set('country', query.country.trim());
-    }
-  } else if (query.state && query.state.trim()) {
-    params.set('state_id', query.state.trim());
+  const area = (query.region === 'row' ? query.country : query.state)?.trim();
+  if (!area) {
+    throw new Error(REPEATERBOOK_AREA_REQUIRED_MESSAGE);
   }
-  if (query.city && query.city.trim()) {
-    params.set('city', query.city.trim());
-  }
+  params.set(query.region === 'row' ? 'country' : 'state_id', area);
   if (service === 'gmrs' && query.region === 'us_ca') {
     params.set('stype', 'gmrs');
   }
@@ -500,15 +502,60 @@ export function isBandAllowed(bandId: RepeaterBandId, bands?: RepeaterBandOption
 }
 
 /**
- * Whether a repeater's (lower-case) city belongs to the searched city: the city contains the search
- * text ("san francisco" for "francisco"), or appears as whole words in it ("nashville" for
- * "nashville tn"). A blank city never matches, and "ada" does not match "adams".
+ * Whether a repeater's (lower-case) city and the searched city name the same place: one appears as
+ * whole words in the other ("san francisco" for "francisco", "nashville" for "nashville tn").
+ * A blank city never matches, and "ada" matches neither "adams" nor "canadian".
  */
 export function cityMatchesFilter(city: string, filter: string): boolean {
   if (!city || !filter) return false;
-  if (city.includes(filter)) return true;
-  const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(filter);
+  const containsWords = (text: string, words: string) => {
+    const escaped = words.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'u').test(text);
+  };
+  return containsWords(city, filter) || containsWords(filter, city);
+}
+
+/** A place name in lower case without accents or punctuation ("St. Louis" -> "st louis"). */
+function normalizePlaceName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * The repeaters RepeaterBook lists under the searched city: exact name matches (ignoring case,
+ * accents and punctuation) when there are any, otherwise whole-word matches by `cityMatchesFilter`
+ * ("Nashville, TN" finds "Nashville"). Across a whole state, exact matches come first so a common
+ * word doesn't pull in other towns.
+ */
+export function entriesInCity(entries: RepeaterBookRawEntry[], city: string): RepeaterBookRawEntry[] {
+  const target = normalizePlaceName(city);
+  if (!target) return [];
+  const listed = entries.map((e) => normalizePlaceName(e['Nearest City'] || e.County || e.Landmark || ''));
+  const exact = entries.filter((_, i) => listed[i] === target);
+  return exact.length > 0 ? exact : entries.filter((_, i) => cityMatchesFilter(listed[i], target));
+}
+
+/** Median of `values` (sorted in place). */
+function median(values: number[]): number {
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+}
+
+/**
+ * Where the searched city is: the median position of the repeaters listed under it, so one
+ * mislocated listing can't move it. `undefined` when none of them has a position.
+ */
+export function locateCity(entries: RepeaterBookRawEntry[], city: string): { lat: number; lon: number } | undefined {
+  const positions = entriesInCity(entries, city)
+    .map(parseRepeaterCoordinates)
+    .filter((p): p is { lat: number; lon: number } => p !== undefined);
+  if (positions.length === 0) return undefined;
+  return { lat: median(positions.map((p) => p.lat)), lon: median(positions.map((p) => p.lon)) };
 }
 
 /**
@@ -543,30 +590,11 @@ export function filterAndNormalizeRepeaterBookResults(
         : query.radius
       : undefined;
 
-  const cityFilter = query.city ? query.city.trim().toLowerCase() : '';
+  const cityFilter = query.city ? query.city.trim() : '';
 
-  // With a city, find the center coordinates of that city to anchor the radius filter
-  let cityCenterLat: number | undefined;
-  let cityCenterLon: number | undefined;
-  if (cityFilter) {
-    let sumLat = 0;
-    let sumLon = 0;
-    let count = 0;
-    for (let j = 0; j < rawResults.length; j++) {
-      const r = rawResults[j];
-      const rCity = (r['Nearest City'] || r.County || r.Landmark || '').trim().toLowerCase();
-      const coords = parseRepeaterCoordinates(r);
-      if (coords && cityMatchesFilter(rCity, cityFilter)) {
-        sumLat += coords.lat;
-        sumLon += coords.lon;
-        count++;
-      }
-    }
-    if (count > 0) {
-      cityCenterLat = sumLat / count;
-      cityCenterLon = sumLon / count;
-    }
-  }
+  // With a city, find where it is to anchor the radius filter
+  const cityEntries = new Set(cityFilter ? entriesInCity(rawResults, cityFilter) : []);
+  const cityCentre = cityFilter ? locateCity(rawResults, cityFilter) : undefined;
 
   for (let i = 0; i < rawResults.length; i++) {
     const entry = rawResults[i];
@@ -605,21 +633,17 @@ export function filterAndNormalizeRepeaterBookResults(
 
     // 4. Geographic scoping & radius filtering
     const city = (entry['Nearest City'] || entry.County || entry.Landmark || '').trim();
-    const county = (entry.County || '').trim();
     const coords = parseRepeaterCoordinates(entry);
 
     let distanceMiles: number | undefined;
 
     if (cityFilter) {
-      if (cityCenterLat !== undefined && cityCenterLon !== undefined && coords) {
-        distanceMiles = computeHaversineMiles(cityCenterLat, cityCenterLon, coords.lat, coords.lon);
+      if (cityCentre && coords) {
+        distanceMiles = computeHaversineMiles(cityCentre.lat, cityCentre.lon, coords.lat, coords.lon);
         if (maxRadiusMiles !== undefined && distanceMiles > maxRadiusMiles) {
           continue;
         }
-      } else if (
-        !cityMatchesFilter(city.toLowerCase(), cityFilter) &&
-        !cityMatchesFilter(county.toLowerCase(), cityFilter)
-      ) {
+      } else if (!cityEntries.has(entry)) {
         // No position to measure from: keep it only if it is listed under the searched city
         continue;
       }
@@ -684,7 +708,7 @@ export function filterAndNormalizeRepeaterBookResults(
   }
 
   // Sort by distance if distance was computed, otherwise by city then frequency
-  if (cityCenterLat !== undefined) {
+  if (cityCentre) {
     candidates.sort((a, b) => (a.distanceMiles ?? 99999) - (b.distanceMiles ?? 99999));
   } else {
     candidates.sort((a, b) => a.city.localeCompare(b.city) || a.rxFreqHz - b.rxFreqHz);
@@ -777,7 +801,10 @@ export async function queryRepeaterBookApi(
       cacheResponse(cacheKey, rawArray, Date.now());
     }
     for (const entry of rawArray) {
-      const key = `${entry['State ID'] ?? ''}|${entry['Rptr ID'] ?? ''}|${entry.Frequency ?? ''}`;
+      // Callsign and city keep repeaters apart if RepeaterBook ever sends no IDs
+      const key = [entry['State ID'], entry['Rptr ID'], entry.Frequency, entry.Callsign, entry['Nearest City']]
+        .map((v) => v ?? '')
+        .join('|');
       if (!seen.has(key)) {
         seen.add(key);
         combined.push(entry);
@@ -785,5 +812,22 @@ export async function queryRepeaterBookApi(
     }
   }
 
+  const city = query.city?.trim();
+  if (city && combined.length > 0 && entriesInCity(combined, city).length === 0) {
+    throw new Error(cityNotListedMessage(query));
+  }
+
   return filterAndNormalizeRepeaterBookResults(combined, query);
+}
+
+/**
+ * Shown when no repeater in the searched state or country is listed under the typed city: the
+ * radius is measured from those listings, so the city can't be placed.
+ */
+export function cityNotListedMessage(query: RepeaterBookQuery): string {
+  const area =
+    query.region === 'row'
+      ? query.country?.trim() || 'that country'
+      : US_CA_STATES.find((s) => s.id === query.state)?.name ?? 'that state or province';
+  return `RepeaterBook lists no repeaters under "${query.city?.trim()}" in ${area}, so the app can't tell where it is. Search from the nearest larger town that has a repeater; the radius still covers the towns around it.`;
 }
