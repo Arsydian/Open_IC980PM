@@ -116,6 +116,27 @@ describe('ImportModal RepeaterBook availability', () => {
   });
 });
 
+describe('ImportModal radius notice', () => {
+  afterEach(() => {
+    delete (window as { api?: unknown }).api;
+  });
+
+  it('tells the user when RepeaterBook gave no locations, so the radius was not applied', async () => {
+    (window as { api?: unknown }).api = {
+      fetchRepeaterBookJson: async () => ({
+        results: [{ Frequency: '146.9400', 'Input Freq': '146.3400', 'Nearest City': 'Nashville', Callsign: 'W4A' }],
+      }),
+    };
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+    fireEvent.change(screen.getByPlaceholderText(/San Francisco, Dallas/), { target: { value: 'Nashville' } });
+    fireEvent.submit(screen.getByRole('button', { name: /Search Repeaters/ }).closest('form')!);
+
+    const notice = await screen.findByText(/radius wasn't applied/);
+    expect(notice.textContent).toContain('the 35 mile radius');
+    expect(screen.getByText(/Found/).textContent).toContain('1');
+  });
+});
+
 describe('ImportModal result limit label', () => {
   it('states the 100-result cap instead of an "arbitrary" limit', () => {
     render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);

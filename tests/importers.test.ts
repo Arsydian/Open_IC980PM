@@ -14,6 +14,7 @@ import {
   clearRepeaterBookCache,
   filterAndNormalizeRepeaterBookResults,
   formatCityCallsignName,
+  radiusNotice,
   RepeaterBookRawEntry,
 } from '../src/core/repeaterBookClient';
 import {
@@ -352,6 +353,24 @@ describe('RepeaterBook city search', () => {
     // "Nashville, TN" contains the listed city as whole words, as the centre search already allowed
     const res = filterAndNormalizeRepeaterBookResults(raw, { ...nashvilleQuery, city: 'Nashville, TN' });
     expect(res.map((r) => r.callsign).sort()).toEqual(['W4A', 'W4B']);
+  });
+
+  it('says when the radius could not be applied for lack of positions', () => {
+    const placed: RepeaterBookRawEntry = { Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4A' };
+    const unplaced = (callsign: string): RepeaterBookRawEntry => ({ Frequency: '147.12', 'Input Freq': '147.72', 'Nearest City': 'Nashville', Callsign: callsign });
+    const noticeFor = (raw: RepeaterBookRawEntry[], query: Parameters<typeof radiusNotice>[1] = nashvilleQuery) =>
+      radiusNotice(filterAndNormalizeRepeaterBookResults(raw, query), query);
+
+    expect(noticeFor([placed])).toBeUndefined();
+    expect(noticeFor([unplaced('W4B')])).toBe(
+      `RepeaterBook gave no locations for these repeaters, so the 25 mile radius wasn't applied: these are the repeaters it lists under "Nashville".`
+    );
+    expect(noticeFor([unplaced('W4B')], { ...nashvilleQuery, radius: 40, distanceUnit: 'km' })).toContain('40 km radius');
+    expect(noticeFor([placed, unplaced('W4B')])).toBe(
+      '1 of these repeaters has no location, so it was matched by city name instead of distance.'
+    );
+    expect(noticeFor([placed, unplaced('W4B'), unplaced('W4C')])).toContain('2 of these repeaters have no location');
+    expect(noticeFor([])).toBeUndefined();
   });
 
   it('matches whole city names only', () => {

@@ -696,6 +696,24 @@ export function filterAndNormalizeRepeaterBookResults(
   return candidates.slice(0, limit);
 }
 
+/**
+ * What to tell the user when the radius could not be applied to some or all `results` because
+ * RepeaterBook gave no usable position for them, so they were matched by city name instead.
+ */
+export function radiusNotice(results: NormalizedRepeaterCandidate[], query: RepeaterBookQuery): string | undefined {
+  const city = query.city?.trim();
+  if (!city || !query.radius || results.length === 0) return undefined;
+  const unplaced = results.filter((r) => r.distanceMiles === undefined).length;
+  if (unplaced === 0) return undefined;
+  if (unplaced === results.length) {
+    const unit = query.distanceUnit === 'km' ? 'km' : 'mile';
+    return `RepeaterBook gave no locations for these repeaters, so the ${query.radius} ${unit} radius wasn't applied: these are the repeaters it lists under "${city}".`;
+  }
+  return unplaced === 1
+    ? `1 of these repeaters has no location, so it was matched by city name instead of distance.`
+    : `${unplaced} of these repeaters have no location, so they were matched by city name instead of distance.`;
+}
+
 interface CachedApiResponse {
   timestamp: number;
   data: RepeaterBookRawEntry[];

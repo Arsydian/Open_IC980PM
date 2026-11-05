@@ -30,6 +30,7 @@ import {
   Sliders,
   Unlock,
   AlertTriangle,
+  Info,
 } from 'lucide-react';
 import type { ChannelInsertionMode, ChannelRecord, RepeaterBandOptions, RepeaterBookQuery } from '../types/radio';
 import {
@@ -39,6 +40,7 @@ import {
   REPEATERBOOK_DESKTOP_ONLY_MESSAGE,
   isRepeaterBookAvailable,
   queryRepeaterBookApi,
+  radiusNotice,
   rateLimitCooldownSeconds,
 } from '../core/repeaterBookClient';
 import { parseChirpOrCpsCsv } from '../core/chirpCsvCodec';
@@ -99,6 +101,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   const [isLoadingRb, setIsLoadingRb] = useState<boolean>(false);
   const [rbError, setRbError] = useState<string | null>(null);
+  const [rbNotice, setRbNotice] = useState<string | null>(null);
   const [rbCandidates, setRbCandidates] = useState<NormalizedRepeaterCandidate[]>([]);
   const [selectedRbIds, setSelectedRbIds] = useState<Set<string>>(new Set());
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
@@ -135,6 +138,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     e.preventDefault();
     setIsLoadingRb(true);
     setRbError(null);
+    setRbNotice(null);
 
     if (!cityFilter.trim()) {
       setRbError('City is required for state/jurisdiction queries to anchor the search and limit query size.');
@@ -179,6 +183,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       const results = await queryRepeaterBookApi(query);
       setRbCandidates(results);
       setSelectedRbIds(new Set(results.map((r) => r.id)));
+      setRbNotice(radiusNotice(results, query) ?? null);
       if (results.length === 0) {
         setRbError(
           'No FM Analog repeaters matched your search criteria in the selected frequency bands.'
@@ -791,6 +796,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-200">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>{rbError}</span>
+                </div>
+              )}
+
+              {rbNotice && (
+                <div
+                  role="status"
+                  className="p-3.5 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center gap-2.5 text-xs text-sky-200"
+                >
+                  <Info className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>{rbNotice}</span>
                 </div>
               )}
 
