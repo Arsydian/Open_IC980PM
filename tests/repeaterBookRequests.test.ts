@@ -12,6 +12,7 @@ import {
   REPEATERBOOK_CACHE_MAX_ENTRIES,
   REPEATERBOOK_DESKTOP_ONLY_MESSAGE,
   REPEATERBOOK_FORMAT_MESSAGE,
+  buildRepeaterBookApiUrls,
   clearRepeaterBookCache,
   extractRepeaterBookEntries,
   filterAndNormalizeRepeaterBookResults,
@@ -21,6 +22,7 @@ import {
   repeaterBookCacheSize,
 } from '../src/core/repeaterBookClient';
 import {
+  CREDENTIALS_IN_URL_MESSAGE,
   REDIRECT_STOPPED_MESSAGE,
   REPEATERBOOK_TOKEN_HEADER,
   REPEATERBOOK_USER_AGENT,
@@ -180,8 +182,8 @@ describe('RepeaterBook response format', () => {
 });
 
 describe('Electron proxy requests', () => {
-  // The exact User-Agent submitted in the project's RepeaterBook API request. RepeaterBook may deny
-  // requests whose User-Agent does not match the approved value, so this must not drift.
+  // The User-Agent RepeaterBook approved for this app (matched as a prefix). RepeaterBook may deny
+  // requests whose User-Agent does not start with it, so this must not drift.
   const REGISTERED_UA = 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)';
 
   it('send the registered User-Agent and the token only in X-RB-App-Token', async () => {
@@ -207,6 +209,33 @@ describe('Electron proxy requests', () => {
     ).rejects.toThrow(REDIRECT_STOPPED_MESSAGE);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].redirect).toBe('manual');
+  });
+
+  it('refuses URLs that carry credentials, which RepeaterBook did not authorize', async () => {
+    const fetchMock = vi.fn(async () => okJson());
+    const base = 'https://www.repeaterbook.com/api/export.php?state_id=47';
+    for (const [url, token] of [
+      [`${base}&token=abc123`, TOKEN],
+      [`${base}&api_key=abc123`, TOKEN],
+      [`${base}&city=rbuapp_abc123`, TOKEN],
+      ['https://user:secret@www.repeaterbook.com/api/export.php', TOKEN],
+      [`${base}&callsign=plain-secret-9`, 'plain-secret-9'],
+    ]) {
+      await expect(fetchRepeaterBookJson(url, token, fetchMock)).rejects.toThrow(CREDENTIALS_IN_URL_MESSAGE);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts every URL the app builds', async () => {
+    const fetchMock = vi.fn(async () => okJson());
+    const urls = [
+      ...buildRepeaterBookApiUrls({ ...query, bands: { include2m: true, includeGmrs: true } }),
+      ...buildRepeaterBookApiUrls({ region: 'row', country: 'United Kingdom', city: 'London', maxResults: 50, apiToken: TOKEN }),
+    ];
+    for (const url of urls) {
+      await fetchRepeaterBookJson(url, TOKEN, fetchMock);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('refuses URLs that are not HTTPS repeaterbook.com', async () => {

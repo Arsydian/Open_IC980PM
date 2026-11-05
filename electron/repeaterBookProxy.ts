@@ -1,14 +1,15 @@
 /**
  * @file electron/repeaterBookProxy.ts
  * @description RepeaterBook API requests made from the Electron main process (no browser CORS,
- * and the app's User-Agent can be set). Follows the RepeaterBook API wiki: the user's app-bound
- * `rbuapp_` token travels only in the `X-RB-App-Token` header, never in the URL.
+ * and the app's User-Agent can be set). Follows the RepeaterBook API wiki and RepeaterBook's
+ * approval of this app: the user's app-bound `rbuapp_` token travels only in the `X-RB-App-Token`
+ * header, never in the URL.
  */
 
 /**
- * The User-Agent registered with RepeaterBook in this app's API access request. RepeaterBook may
- * deny requests whose User-Agent does not match the approved value, so this is a fixed string:
- * it must not follow the package.json version. Change it only together with RepeaterBook.
+ * The User-Agent RepeaterBook approved for this app (app ID 141). RepeaterBook matches it as a
+ * prefix and may deny requests that don't start with it, so this is a fixed string: it must not
+ * follow the package.json version. Change it only together with RepeaterBook.
  */
 export const REPEATERBOOK_USER_AGENT = 'Open_IC980PM/1.0 (https://github.com/Arsydian/Open_IC980PM; open-source-cps)';
 
@@ -30,6 +31,24 @@ export function isValidRepeaterBookUrl(rawUrl: string): boolean {
   }
 }
 
+export const CREDENTIALS_IN_URL_MESSAGE =
+  'Refused: RepeaterBook credentials may only be sent in the X-RB-App-Token header, never in the URL.';
+
+/**
+ * Whether a URL carries a credential: user info, a credential-named query parameter, a value that
+ * looks like a RepeaterBook token, or `apiToken` itself. RepeaterBook's approval of this app does
+ * not authorize credentials in query parameters.
+ */
+export function urlCarriesCredentials(rawUrl: string, apiToken?: string): boolean {
+  const parsed = new URL(rawUrl);
+  if (parsed.username || parsed.password) return true;
+  for (const [name, value] of parsed.searchParams) {
+    if (/token|key|auth|secret|password/i.test(name) || /^(rbuapp|app)_/i.test(value.trim())) return true;
+  }
+  const token = apiToken?.trim();
+  return !!token && (rawUrl.includes(token) || rawUrl.includes(encodeURIComponent(token)));
+}
+
 export const REDIRECT_STOPPED_MESSAGE =
   'RepeaterBook answered with a redirect, so the request was stopped without following it (your token was not re-sent). Try again later.';
 
@@ -48,6 +67,9 @@ export async function fetchRepeaterBookJson(
 ): Promise<unknown> {
   if (!isValidRepeaterBookUrl(url)) {
     throw new Error('Access denied: URL must be an official https://www.repeaterbook.com endpoint.');
+  }
+  if (urlCarriesCredentials(url, typeof apiToken === 'string' ? apiToken : undefined)) {
+    throw new Error(CREDENTIALS_IN_URL_MESSAGE);
   }
   const headers: Record<string, string> = {
     Accept: 'application/json',

@@ -436,7 +436,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     <span>Personal App-Bound API Token</span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    RepeaterBook requires your own app-bound token (<code className="text-amber-300 font-mono">rbuapp_...</code>), generated while logged in on its API Applications page. It is shown only once there, and is kept only on this computer.
+                    RepeaterBook requires your own token for Open_IC980PM (<code className="text-amber-300 font-mono">rbuapp_...</code>), generated while logged in on its API Applications page. It is shown only once there, and is kept only on this computer.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 w-full md:w-auto">
