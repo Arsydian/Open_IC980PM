@@ -137,6 +137,49 @@ describe('ImportModal radius notice', () => {
   });
 });
 
+describe('ImportModal refused searches', () => {
+  afterEach(() => {
+    delete (window as { api?: unknown }).api;
+  });
+
+  const searchAs = (token: string) => {
+    fireEvent.change(screen.getByLabelText('RepeaterBook app token'), { target: { value: token } });
+    fireEvent.change(screen.getByPlaceholderText(/San Francisco, Dallas/), { target: { value: 'Nashville' } });
+    fireEvent.submit(screen.getByRole('button', { name: /Search Repeaters/ }).closest('form')!);
+  };
+
+  it('keeps search off after a token refusal until the token changes', async () => {
+    const fetchRepeaterBookJson = vi.fn(async () => {
+      throw new Error("Error invoking remote method 'repeaterbook:fetch': Error: RepeaterBook refused the search (auth_revoked): revoked");
+    });
+    (window as { api?: unknown }).api = { fetchRepeaterBookJson };
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+
+    searchAs('rbuapp_old');
+    await screen.findByText(/Enter a different token to search again/);
+    expect(screen.getByRole('button', { name: /Search Repeaters/ })).toHaveProperty('disabled', true);
+    expect(screen.getByText(/refused the search \(auth_revoked\)/).textContent).not.toContain('Error invoking');
+
+    fireEvent.change(screen.getByLabelText('RepeaterBook app token'), { target: { value: 'rbuapp_new' } });
+    expect(screen.getByRole('button', { name: /Search Repeaters/ })).toHaveProperty('disabled', false);
+    expect(screen.queryByText(/Enter a different token/)).toBeNull();
+  });
+
+  it('keeps search off after a User-Agent refusal whatever the token', async () => {
+    (window as { api?: unknown }).api = {
+      fetchRepeaterBookJson: vi.fn(async () => {
+        throw new Error('RepeaterBook refused the search (ua_mismatch): update the app');
+      }),
+    };
+    render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+
+    searchAs('rbuapp_one');
+    await screen.findByText(/searching is off until Open_IC980PM is updated/);
+    fireEvent.change(screen.getByLabelText('RepeaterBook app token'), { target: { value: 'rbuapp_two' } });
+    expect(screen.getByRole('button', { name: /Search Repeaters/ })).toHaveProperty('disabled', true);
+  });
+});
+
 describe('ImportModal result limit label', () => {
   it('states the 100-result cap instead of an "arbitrary" limit', () => {
     render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);

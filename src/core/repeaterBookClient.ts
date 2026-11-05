@@ -43,6 +43,23 @@ export function rateLimitCooldownSeconds(errorMessage: string): number {
   return Math.max(MIN_RATE_LIMIT_COOLDOWN_SECONDS, retryAfter ? parseInt(retryAfter[1], 10) : 0);
 }
 
+/**
+ * Whether an error means searching again can't help until something changes: `'token'` for an
+ * authorization or scope refusal (a different token may fix it), `'app'` for a User-Agent refusal
+ * (only an app update can). The API wiki says not to retry these without fixing the cause. Reads
+ * the error code that electron/repeaterBookProxy.ts puts in parentheses.
+ */
+export function repeaterBookRefusal(errorMessage: string): 'token' | 'app' | undefined {
+  if (errorMessage.includes('(ua_mismatch)')) return 'app';
+  if (/\(auth_[a-z_]+\)|\(HTTP 40[13]\)/.test(errorMessage)) return 'token';
+  return undefined;
+}
+
+/** Electron prefixes errors from the main process with "Error invoking remote method '…': Error: ". */
+function withoutIpcPrefix(message: string): string {
+  return message.replace(/^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/, '');
+}
+
 /** Supported frequency band identifiers for RepeaterBook classification and filtering. */
 export type RepeaterBandId = '2m' | '70cm' | 'GMRS' | '1.25m' | 'VHF Ext' | 'UHF Ext';
 
@@ -796,7 +813,12 @@ export async function queryRepeaterBookApi(
     if (cached && Date.now() - cached.timestamp < REPEATERBOOK_CACHE_TTL_MS) {
       rawArray = cached.data;
     } else {
-      const jsonPayload: unknown = await window.api!.fetchRepeaterBookJson(url, query.apiToken);
+      let jsonPayload: unknown;
+      try {
+        jsonPayload = await window.api!.fetchRepeaterBookJson(url, query.apiToken);
+      } catch (err) {
+        throw new Error(withoutIpcPrefix(err instanceof Error ? err.message : String(err)));
+      }
       rawArray = extractRepeaterBookEntries(jsonPayload);
       cacheResponse(cacheKey, rawArray, Date.now());
     }

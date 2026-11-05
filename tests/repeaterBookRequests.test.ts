@@ -20,10 +20,14 @@ import {
   queryRepeaterBookApi,
   rateLimitCooldownSeconds,
   repeaterBookCacheSize,
+  repeaterBookRefusal,
 } from '../src/core/repeaterBookClient';
 import {
   CREDENTIALS_IN_URL_MESSAGE,
   REDIRECT_STOPPED_MESSAGE,
+  REPEATERBOOK_ERROR_MESSAGES,
+  REPEATERBOOK_TIMEOUT_MS,
+  TIMEOUT_MESSAGE,
   REPEATERBOOK_TOKEN_HEADER,
   REPEATERBOOK_USER_AGENT,
   fetchRepeaterBookJson,
@@ -112,6 +116,26 @@ describe('RepeaterBook client', () => {
       await queryRepeaterBookApi({ ...query, state: String(i + 1).padStart(2, '0') });
     }
     expect(repeaterBookCacheSize()).toBe(REPEATERBOOK_CACHE_MAX_ENTRIES);
+  });
+
+  it("shows the proxy's message without Electron's IPC prefix", async () => {
+    vi.stubGlobal('window', {
+      api: {
+        fetchRepeaterBookJson: vi.fn(async () => {
+          throw new Error("Error invoking remote method 'repeaterbook:fetch': Error: RepeaterBook refused the search (auth_revoked): gone");
+        }),
+      },
+    });
+    await expect(queryRepeaterBookApi(query)).rejects.toThrow(/^RepeaterBook refused the search \(auth_revoked\): gone$/);
+  });
+
+  it('tells token refusals from User-Agent refusals, so neither is retried blindly', () => {
+    expect(repeaterBookRefusal('RepeaterBook refused the search (auth_revoked): ...')).toBe('token');
+    expect(repeaterBookRefusal('RepeaterBook refused the search (auth_scope_denied): ...')).toBe('token');
+    expect(repeaterBookRefusal('RepeaterBook API access denied (HTTP 403). ...')).toBe('token');
+    expect(repeaterBookRefusal('RepeaterBook refused the search (ua_mismatch): ...')).toBe('app');
+    expect(repeaterBookRefusal('RepeaterBook API rate limit exceeded (HTTP 429). Retry after 60 seconds.')).toBeUndefined();
+    expect(repeaterBookRefusal(TIMEOUT_MESSAGE)).toBeUndefined();
   });
 
   it('says so when no repeater in the state is listed under the typed city', async () => {
@@ -261,6 +285,50 @@ describe('Electron proxy requests', () => {
       await expect(fetchRepeaterBookJson(url, TOKEN, fetchMock)).rejects.toThrow(/Access denied/);
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Electron proxy time limit and error codes (API wiki)', () => {
+  const URL_ = 'https://www.repeaterbook.com/api/export.php?state_id=47';
+  const jsonError = (status: number, body: unknown) =>
+    vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }));
+
+  it('gives up after 30 seconds, as the wiki examples do', async () => {
+    expect(REPEATERBOOK_TIMEOUT_MS).toBe(30_000);
+    const hangs = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)))
+    );
+    await expect(fetchRepeaterBookJson(URL_, TOKEN, hangs as unknown as typeof fetch, 20)).rejects.toThrow(TIMEOUT_MESSAGE);
+    expect((hangs.mock.calls[0] as unknown as [string, RequestInit])[1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('explains each documented error code, wherever it appears in the JSON body', async () => {
+    for (const [code, body] of [
+      ['auth_invalid', { error: 'auth_invalid' }],
+      ['auth_revoked', { status: 'error', code: 'auth_revoked', message: 'Token revoked' }],
+      ['auth_scope_denied', { error: { code: 'auth_scope_denied' } }],
+      ['ua_mismatch', { error: 'ua_mismatch' }],
+    ] as const) {
+      await expect(fetchRepeaterBookJson(URL_, TOKEN, jsonError(403, body))).rejects.toThrow(
+        `RepeaterBook refused the search (${code}): ${REPEATERBOOK_ERROR_MESSAGES[code]}`
+      );
+    }
+    // Also when sent with a 200
+    await expect(fetchRepeaterBookJson(URL_, TOKEN, jsonError(200, { error: 'auth_missing' }))).rejects.toThrow('(auth_missing)');
+  });
+
+  it('treats rate_limited like a 429 and keeps the generic message for unknown refusals', async () => {
+    await expect(fetchRepeaterBookJson(URL_, TOKEN, jsonError(403, { error: 'rate_limited' }))).rejects.toThrow('HTTP 429');
+    await expect(fetchRepeaterBookJson(URL_, TOKEN, jsonError(401, { error: 'something_else' }))).rejects.toThrow(
+      'RepeaterBook API access denied (HTTP 401)'
+    );
+    await expect(fetchRepeaterBookJson(URL_, TOKEN, jsonError(200, { error: 'toString' }))).resolves.toEqual({ error: 'toString' });
+  });
+
+  it('reports a successful response that is not JSON', async () => {
+    const html = vi.fn(async () => new Response('<html>maintenance</html>', { status: 200 }));
+    await expect(fetchRepeaterBookJson(URL_, TOKEN, html)).rejects.toThrow('empty or non-JSON response');
   });
 });
 

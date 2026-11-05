@@ -42,6 +42,7 @@ import {
   queryRepeaterBookApi,
   radiusNotice,
   rateLimitCooldownSeconds,
+  repeaterBookRefusal,
 } from '../core/repeaterBookClient';
 import { parseChirpOrCpsCsv } from '../core/chirpCsvCodec';
 import { fileSizeProblem } from '../core/fileLimits';
@@ -105,6 +106,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [rbCandidates, setRbCandidates] = useState<NormalizedRepeaterCandidate[]>([]);
   const [selectedRbIds, setSelectedRbIds] = useState<Set<string>>(new Set());
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+  // RepeaterBook's API wiki: don't retry authorization, scope or User-Agent refusals without
+  // fixing the cause, so searching stays off until the token changes (or, for the User-Agent,
+  // until the app is updated)
+  const [refusedToken, setRefusedToken] = useState<string | null>(null);
+  const [appRefused, setAppRefused] = useState<boolean>(false);
 
   // Advanced Band Selection State (Collapsed by Default)
   const [showAdvancedBands, setShowAdvancedBands] = useState<boolean>(false);
@@ -131,11 +137,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const dialogRef = useDialogA11y(isOpen, onClose);
   // RepeaterBook is only reachable through the desktop app's proxy
   const rbAvailable = isRepeaterBookAvailable();
+  const searchBlockedReason = appRefused
+    ? "RepeaterBook refused this app's User-Agent, so searching is off until Open_IC980PM is updated."
+    : refusedToken !== null && refusedToken === apiToken.trim()
+    ? 'RepeaterBook refused this token. Enter a different token to search again.'
+    : null;
 
   if (!isOpen) return null;
 
   const handleSearchRepeaterBook = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (searchBlockedReason) return;
     setIsLoadingRb(true);
     setRbError(null);
     setRbNotice(null);
@@ -201,6 +213,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       if (cooldown > 0) {
         setCooldownSeconds(cooldown);
       }
+      const refusal = repeaterBookRefusal(msg);
+      if (refusal === 'token') setRefusedToken(apiToken.trim());
+      if (refusal === 'app') setAppRefused(true);
     } finally {
       setIsLoadingRb(false);
     }
@@ -620,6 +635,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </p>
                   </div>
 
+                  {searchBlockedReason && (
+                    <div
+                      role="note"
+                      className="md:col-span-4 p-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2"
+                    >
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>{searchBlockedReason}</span>
+                    </div>
+                  )}
+
                   {cooldownSeconds > 0 && (
                     <div className="md:col-span-4 p-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
@@ -632,7 +657,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="submit"
-                      disabled={!rbAvailable || isLoadingRb || cooldownSeconds > 0}
+                      disabled={!rbAvailable || isLoadingRb || cooldownSeconds > 0 || searchBlockedReason !== null}
                       className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white shadow-sm disabled:opacity-50"
                     >
                       {cooldownSeconds > 0 ? (
