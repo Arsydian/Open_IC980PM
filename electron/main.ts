@@ -55,11 +55,11 @@ function getRepeaterBookTokenPath(): string {
 
 const tokenCipher: TokenCipher = {
   // Without a keyring, Linux falls back to a hard-coded key ("basic_text"), which is not secure
-  isEncryptionAvailable: () =>
-    safeStorage.isEncryptionAvailable() &&
+  isEncryptionAvailable: async () =>
+    (await safeStorage.isAsyncEncryptionAvailable()) &&
     !(process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text'),
-  encryptString: (plainText) => safeStorage.encryptString(plainText),
-  decryptString: (encrypted) => safeStorage.decryptString(encrypted),
+  encryptString: (plainText) => safeStorage.encryptStringAsync(plainText),
+  decryptString: (encrypted) => safeStorage.decryptStringAsync(encrypted),
 };
 
 function createWindow(): void {
