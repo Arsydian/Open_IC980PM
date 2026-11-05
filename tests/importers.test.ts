@@ -307,12 +307,25 @@ describe('RepeaterBook city search', () => {
 
   it('ignores repeaters with a blank city when finding the city centre', () => {
     const raw: RepeaterBookRawEntry[] = [
-      { Frequency: '146.94', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4A' },
-      { Frequency: '147.00', 'Nearest City': '', Lat: '45.0', Long: '-120.0', Callsign: 'W7Z' },
+      { Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4A' },
+      { Frequency: '147.00', 'Input Freq': '147.60', 'Nearest City': '', Lat: '45.0', Long: '-120.0', Callsign: 'W7Z' },
     ];
     const res = filterAndNormalizeRepeaterBookResults(raw, nashvilleQuery);
     expect(res.map((r) => r.callsign)).toEqual(['W4A']);
     expect(res[0].distanceMiles).toBe(0);
+  });
+
+  it('skips a repeater without a usable input frequency instead of programming it simplex', () => {
+    const raw: RepeaterBookRawEntry[] = [
+      { Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Callsign: 'W4OK' },
+      { Frequency: '147.12', 'Input Freq': '', 'Nearest City': 'Nashville', Callsign: 'W4BLANK' },
+      { Frequency: '147.18', 'Input Freq': '0', 'Nearest City': 'Nashville', Callsign: 'W4ZERO' },
+      { Frequency: '146.82', 'Input Freq': '53.5', 'Nearest City': 'Nashville', Callsign: 'W4SIXM' },
+    ];
+    const res = filterAndNormalizeRepeaterBookResults(raw, nashvilleQuery);
+    expect(res.map((r) => r.callsign)).toEqual(['W4OK']);
+    expect(res[0].txFreqHz).toBe(146_340_000);
+    expect(res.every((r) => r.txFreqHz !== r.rxFreqHz)).toBe(true);
   });
 
   it('matches whole city names only', () => {

@@ -586,8 +586,10 @@ export function filterAndNormalizeRepeaterBookResults(
 
     const band: RepeaterBandId = classified.bandId;
 
-    const txMhzRaw = parseFloat(entry['Input Freq'] || '');
-    const txMhz = Number.isFinite(txMhzRaw) && txMhzRaw >= 100.0 ? txMhzRaw : rxMhz;
+    // Without a usable input frequency the repeater is skipped: using the output frequency instead
+    // would program it simplex, transmitting on top of the repeater's users
+    const txMhz = parseFloat(entry['Input Freq'] || '');
+    if (!Number.isFinite(txMhz) || txMhz < 100.0) continue;
 
     const rxFreqHz = Math.round(rxMhz * 1_000_000);
     const txFreqHz = Math.round(txMhz * 1_000_000);
