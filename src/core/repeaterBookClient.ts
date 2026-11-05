@@ -690,7 +690,8 @@ export function filterAndNormalizeRepeaterBookResults(
     const rptrId = entry['Rptr ID'];
     const stateId = entry['State ID'] || entry.State;
     const detailUrl = rptrId && stateId
-      ? `https://www.repeaterbook.com/repeaters/details.php?state_id=${encodeURIComponent(stateId)}&ID=${encodeURIComponent(rptrId)}`
+      ? // Outside North America, RepeaterBook's pages live under row_repeaters/ (state_id is the country code)
+        `https://www.repeaterbook.com/${query.region === 'row' ? 'row_repeaters' : 'repeaters'}/details.php?state_id=${encodeURIComponent(stateId)}&ID=${encodeURIComponent(rptrId)}`
       : 'https://www.repeaterbook.com';
 
     ch.name = formattedChannelName;

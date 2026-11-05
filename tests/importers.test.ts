@@ -376,6 +376,19 @@ describe('RepeaterBook city search', () => {
     expect(noticeFor([])).toBeUndefined();
   });
 
+  it('links each repeater to its RepeaterBook page, under row_repeaters/ outside North America', () => {
+    const entry = (stateId: string, id: string, city: string): RepeaterBookRawEntry => ({
+      'State ID': stateId, 'Rptr ID': id, Frequency: '145.6500', 'Input Freq': '145.0500', 'Nearest City': city, Callsign: 'GB3VI',
+    });
+    const [na] = filterAndNormalizeRepeaterBookResults([entry('47', '12902', 'Nashville')], nashvilleQuery);
+    expect(na.detailUrl).toBe('https://www.repeaterbook.com/repeaters/details.php?state_id=47&ID=12902');
+
+    const [row] = filterAndNormalizeRepeaterBookResults([entry('GB', '3758', 'Hastings')], {
+      region: 'row', country: 'United Kingdom', city: 'Hastings', radius: 25, maxResults: 50,
+    });
+    expect(row.detailUrl).toBe('https://www.repeaterbook.com/row_repeaters/details.php?state_id=GB&ID=3758');
+  });
+
   it('matches whole city names only', () => {
     expect(cityMatchesFilter('san francisco', 'francisco')).toBe(true);
     expect(cityMatchesFilter('nashville', 'nashville tn')).toBe(true);
