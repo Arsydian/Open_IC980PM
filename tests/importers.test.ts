@@ -328,6 +328,32 @@ describe('RepeaterBook city search', () => {
     expect(res.every((r) => r.txFreqHz !== r.rxFreqHz)).toBe(true);
   });
 
+  it('treats 0/0 or out-of-range coordinates as unknown instead of moving the city centre', () => {
+    const raw: RepeaterBookRawEntry[] = [
+      { Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4A' },
+      { Frequency: '147.12', 'Input Freq': '147.72', 'Nearest City': 'Nashville', Lat: '36.20', Long: '-86.70', Callsign: 'W4B' },
+      { Frequency: '147.30', 'Input Freq': '147.90', 'Nearest City': 'Nashville', Lat: '0', Long: '0', Callsign: 'W4ZERO' },
+      { Frequency: '147.36', 'Input Freq': '147.96', 'Nearest City': 'Nashville', Lat: '136.2', Long: '-86.7', Callsign: 'W4BAD' },
+    ];
+    const res = filterAndNormalizeRepeaterBookResults(raw, nashvilleQuery);
+    // The real positions anchor the radius; the two without one are matched by city name
+    expect(res.map((r) => r.callsign)).toEqual(['W4A', 'W4B', 'W4ZERO', 'W4BAD']);
+    expect(res[0].distanceMiles).toBeLessThan(5);
+    expect(res[1].distanceMiles).toBeLessThan(5);
+    expect(res[2].distanceMiles).toBeUndefined();
+    expect(res[3].distanceMiles).toBeUndefined();
+  });
+
+  it('matches a city the same way with or without positions', () => {
+    const raw: RepeaterBookRawEntry[] = [
+      { Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Callsign: 'W4A' },
+      { Frequency: '147.12', 'Input Freq': '147.72', 'Nearest City': 'Nashville', Lat: '36.16', Long: '-86.78', Callsign: 'W4B' },
+    ];
+    // "Nashville, TN" contains the listed city as whole words, as the centre search already allowed
+    const res = filterAndNormalizeRepeaterBookResults(raw, { ...nashvilleQuery, city: 'Nashville, TN' });
+    expect(res.map((r) => r.callsign).sort()).toEqual(['W4A', 'W4B']);
+  });
+
   it('matches whole city names only', () => {
     expect(cityMatchesFilter('san francisco', 'francisco')).toBe(true);
     expect(cityMatchesFilter('nashville', 'nashville tn')).toBe(true);

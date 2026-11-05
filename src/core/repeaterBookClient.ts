@@ -512,6 +512,18 @@ export function cityMatchesFilter(city: string, filter: string): boolean {
 }
 
 /**
+ * A repeater's position, or `undefined` when it is missing, out of range, or 0/0 (a placeholder
+ * for "unknown", which would otherwise drag the city centre thousands of miles away).
+ */
+export function parseRepeaterCoordinates(entry: RepeaterBookRawEntry): { lat: number; lon: number } | undefined {
+  const lat = parseFloat(entry.Lat || '');
+  const lon = parseFloat(entry.Long || '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return undefined;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || (lat === 0 && lon === 0)) return undefined;
+  return { lat, lon };
+}
+
+/**
  * Filters and normalizes raw RepeaterBook entries according to User Requirement #5:
  * - Automatically filters to 2m, 70cm, or selected unlocked bands (GMRS, 1.25m, Extended VHF/UHF)
  * - Filters by City/State or Lat/Long + Radius (Haversine distance)
@@ -543,14 +555,11 @@ export function filterAndNormalizeRepeaterBookResults(
     for (let j = 0; j < rawResults.length; j++) {
       const r = rawResults[j];
       const rCity = (r['Nearest City'] || r.County || r.Landmark || '').trim().toLowerCase();
-      if (cityMatchesFilter(rCity, cityFilter)) {
-        const lat = parseFloat(r.Lat || '');
-        const lon = parseFloat(r.Long || '');
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          sumLat += lat;
-          sumLon += lon;
-          count++;
-        }
+      const coords = parseRepeaterCoordinates(r);
+      if (coords && cityMatchesFilter(rCity, cityFilter)) {
+        sumLat += coords.lat;
+        sumLon += coords.lon;
+        count++;
       }
     }
     if (count > 0) {
@@ -597,24 +606,22 @@ export function filterAndNormalizeRepeaterBookResults(
     // 4. Geographic scoping & radius filtering
     const city = (entry['Nearest City'] || entry.County || entry.Landmark || '').trim();
     const county = (entry.County || '').trim();
-    const rLat = parseFloat(entry.Lat || '');
-    const rLon = parseFloat(entry.Long || '');
-    const hasCoords = Number.isFinite(rLat) && Number.isFinite(rLon);
+    const coords = parseRepeaterCoordinates(entry);
 
     let distanceMiles: number | undefined;
 
     if (cityFilter) {
-      if (cityCenterLat !== undefined && cityCenterLon !== undefined && hasCoords) {
-        distanceMiles = computeHaversineMiles(cityCenterLat, cityCenterLon, rLat, rLon);
+      if (cityCenterLat !== undefined && cityCenterLon !== undefined && coords) {
+        distanceMiles = computeHaversineMiles(cityCenterLat, cityCenterLon, coords.lat, coords.lon);
         if (maxRadiusMiles !== undefined && distanceMiles > maxRadiusMiles) {
           continue;
         }
-      } else {
-        const matchesCity = city.toLowerCase().includes(cityFilter);
-        const matchesCounty = county.toLowerCase().includes(cityFilter);
-        if (!matchesCity && !matchesCounty) {
-          continue;
-        }
+      } else if (
+        !cityMatchesFilter(city.toLowerCase(), cityFilter) &&
+        !cityMatchesFilter(county.toLowerCase(), cityFilter)
+      ) {
+        // No position to measure from: keep it only if it is listed under the searched city
+        continue;
       }
     }
 
