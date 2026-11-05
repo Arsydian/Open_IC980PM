@@ -6,14 +6,16 @@
  * 2. WebHID device selection limited to the radio (`"ASER _HID"` / `"ASER-471"`)
  * 3. CORS-free RepeaterBook API HTTP proxy sending the registered `User-Agent` (repeaterBookProxy.ts)
  * 4. Persistent Pre-Write EEPROM Safety Snapshot storage ("Rollback Vault")
+ * 5. The user's RepeaterBook token, stored encrypted with safeStorage (tokenStore.ts)
  */
 
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readVaultFile, writeVaultFile } from './vaultStore.js';
 import { fetchRepeaterBookJson } from './repeaterBookProxy.js';
+import { MAX_TOKEN_LENGTH, readToken, writeToken, type TokenCipher } from './tokenStore.js';
 import { shouldOpenExternally } from './externalLinks.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +47,20 @@ function readRollbackVault(): unknown[] {
 function writeRollbackVault(snapshots: unknown[]): void {
   writeVaultFile(getRollbackVaultPath(), snapshots);
 }
+
+/** Where the user's RepeaterBook token is kept, encrypted (tokenStore.ts). */
+function getRepeaterBookTokenPath(): string {
+  return path.join(app.getPath('userData'), 'repeaterbook-token.bin');
+}
+
+const tokenCipher: TokenCipher = {
+  // Without a keyring, Linux falls back to a hard-coded key ("basic_text"), which is not secure
+  isEncryptionAvailable: () =>
+    safeStorage.isEncryptionAvailable() &&
+    !(process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text'),
+  encryptString: (plainText) => safeStorage.encryptString(plainText),
+  decryptString: (encrypted) => safeStorage.decryptString(encrypted),
+};
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -149,6 +165,14 @@ app.whenReady().then(() => {
   ipcMain.handle('repeaterbook:fetch', async (_event, url: string, apiToken?: string) =>
     fetchRepeaterBookJson(url, apiToken)
   );
+
+  ipcMain.handle('repeaterbook:token:get', () => readToken(getRepeaterBookTokenPath(), tokenCipher));
+
+  // Returns whether the token was saved; false when the system can't encrypt it
+  ipcMain.handle('repeaterbook:token:set', (_event, token: unknown) => {
+    if (typeof token !== 'string' || token.length > MAX_TOKEN_LENGTH) return false;
+    return writeToken(getRepeaterBookTokenPath(), token, tokenCipher);
+  });
 
   ipcMain.handle('vault:list', () => {
     return readRollbackVault();

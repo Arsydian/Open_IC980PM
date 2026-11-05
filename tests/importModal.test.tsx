@@ -5,33 +5,81 @@
  */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ImportModal, RB_TOKEN_STORAGE_KEY } from '../src/components/ImportModal';
+import { ImportModal } from '../src/components/ImportModal';
 import { REPEATERBOOK_DESKTOP_ONLY_MESSAGE } from '../src/core/repeaterBookClient';
+import { LEGACY_TOKEN_STORAGE_KEY, loadRepeaterBookToken } from '../src/core/repeaterBookToken';
 
 afterEach(cleanup);
 
 describe('ImportModal RepeaterBook token', () => {
-  it('saves the token once when the field is left, trimmed, and removes it when cleared', () => {
+  afterEach(() => {
+    delete (window as { api?: unknown }).api;
     localStorage.clear();
-    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+  });
+
+  /** The desktop bridge, with the encrypted token store faked. */
+  const installBridge = (saved: string, canEncrypt = true) => {
+    const setRepeaterBookToken = vi.fn(async (_token: string) => canEncrypt);
+    (window as { api?: unknown }).api = {
+      fetchRepeaterBookJson: async () => ({ results: [] }),
+      getRepeaterBookToken: async () => saved,
+      setRepeaterBookToken,
+    };
+    return setRepeaterBookToken;
+  };
+  const renderModal = () =>
     render(<ImportModal isOpen selectedChannelNumber={1} onClose={() => undefined} onImportChannels={() => undefined} />);
+
+  it('loads the encrypted token, and saves it once when the field is left, trimmed, or deletes it when cleared', async () => {
+    const save = installBridge('rbuapp_saved');
+    renderModal();
     const input = screen.getByLabelText('RepeaterBook app token');
+    await waitFor(() => expect(input).toHaveProperty('value', 'rbuapp_saved'));
 
     for (const partial of ['r', 'rb', 'rbuapp_abc ']) {
       fireEvent.change(input, { target: { value: partial } });
     }
-    expect(setItem).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
 
     fireEvent.blur(input);
-    expect(localStorage.getItem(RB_TOKEN_STORAGE_KEY)).toBe('rbuapp_abc');
-    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenLastCalledWith('rbuapp_abc');
 
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.blur(input);
-    expect(localStorage.getItem(RB_TOKEN_STORAGE_KEY)).toBeNull();
-    setItem.mockRestore();
+    expect(save).toHaveBeenLastCalledWith('');
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('says so when the token cannot be encrypted and so is not saved', async () => {
+    installBridge('', false);
+    renderModal();
+    const input = screen.getByLabelText('RepeaterBook app token');
+    fireEvent.change(input, { target: { value: 'rbuapp_abc' } });
+    fireEvent.blur(input);
+    await screen.findByText(/can't encrypt the token, so it isn't saved/);
+  });
+
+  it('moves a plain-text token left by an earlier version into encrypted storage', async () => {
+    localStorage.setItem(LEGACY_TOKEN_STORAGE_KEY, 'rbuapp_old ');
+    const save = installBridge('');
+    await expect(loadRepeaterBookToken()).resolves.toBe('rbuapp_old');
+    expect(save).toHaveBeenCalledWith('rbuapp_old');
+    expect(localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps no token in a browser build, where RepeaterBook cannot be searched', async () => {
+    localStorage.setItem(LEGACY_TOKEN_STORAGE_KEY, 'rbuapp_old');
+    await expect(loadRepeaterBookToken()).resolves.toBe('');
+    expect(localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY)).toBeNull();
+
+    renderModal();
+    const input = screen.getByLabelText('RepeaterBook app token');
+    fireEvent.change(input, { target: { value: 'rbuapp_abc' } });
+    fireEvent.blur(input);
+    expect(localStorage.length).toBe(0);
   });
 
   it('links to the page where RepeaterBook users generate app tokens', () => {

@@ -44,6 +44,7 @@ import {
   rateLimitCooldownSeconds,
   repeaterBookRefusal,
 } from '../core/repeaterBookClient';
+import { loadRepeaterBookToken, saveRepeaterBookToken } from '../core/repeaterBookToken';
 import { parseChirpOrCpsCsv } from '../core/chirpCsvCodec';
 import { fileSizeProblem } from '../core/fileLimits';
 import { ALL_QUICK_PACKS, QuickPackDefinition } from '../core/quickPacks';
@@ -60,9 +61,6 @@ interface ImportModalProps {
 }
 
 type ImportTab = 'repeaterbook' | 'chirp' | 'quickpacks';
-
-/** localStorage key for the user's RepeaterBook app token (kept on this computer only). */
-export const RB_TOKEN_STORAGE_KEY = 'open_ic980pm_rb_token';
 
 export const ImportModal: React.FC<ImportModalProps> = ({
   isOpen,
@@ -92,13 +90,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [distanceUnit, setDistanceUnit] = useState<'miles' | 'km'>('miles');
   const [maxResults, setMaxResults] = useState<string>('50');
   const [openOnly, setOpenOnly] = useState<boolean>(true);
-  const [apiToken, setApiToken] = useState<string>(() => {
-    try {
-      return localStorage.getItem(RB_TOKEN_STORAGE_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
+  const [apiToken, setApiToken] = useState<string>('');
+  // Set when the system can't encrypt the token, so it lasts only until the app closes
+  const [tokenNotSaved, setTokenNotSaved] = useState<boolean>(false);
+
+  // The saved token is loaded once, from the desktop app's encrypted store
+  React.useEffect(() => {
+    let cancelled = false;
+    loadRepeaterBookToken()
+      .then((saved) => {
+        if (!cancelled && saved) setApiToken((current) => current || saved);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [isLoadingRb, setIsLoadingRb] = useState<boolean>(false);
   const [rbError, setRbError] = useState<string | null>(null);
@@ -456,8 +463,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     <span>Personal App-Bound API Token</span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    RepeaterBook requires your own token for Open_IC980PM (<code className="text-amber-300 font-mono">rbuapp_...</code>), generated while logged in on its API Applications page. It is shown only once there, and is kept only on this computer.
+                    RepeaterBook requires your own token for Open_IC980PM (<code className="text-amber-300 font-mono">rbuapp_...</code>), generated while logged in on its API Applications page. It is shown only once there. This app keeps it on this computer, encrypted.
                   </p>
+                  {tokenNotSaved && (
+                    <p role="note" className="text-[11px] text-amber-300 mt-1">
+                      This computer can't encrypt the token, so it isn't saved: it lasts only until the app closes.
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 w-full md:w-auto">
                   <input
@@ -470,15 +482,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     onBlur={(e) => {
                       const token = e.target.value.trim();
                       setApiToken(token);
-                      try {
-                        if (token) {
-                          localStorage.setItem(RB_TOKEN_STORAGE_KEY, token);
-                        } else {
-                          localStorage.removeItem(RB_TOKEN_STORAGE_KEY);
-                        }
-                      } catch {
-                        // Storage unavailable (private window); the token still works for this session
-                      }
+                      if (!rbAvailable) return; // Browser builds can't search, so keep no token
+                      saveRepeaterBookToken(token)
+                        .then((saved) => setTokenNotSaved(!saved && token !== ''))
+                        .catch(() => setTokenNotSaved(token !== ''));
                     }}
                     placeholder="Enter rbuapp_... token"
                     className="w-full md:w-64 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"

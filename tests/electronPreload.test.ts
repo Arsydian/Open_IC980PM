@@ -46,6 +46,8 @@ describe('Electron preload bridge', () => {
     expect(keys).toEqual([
       'platform',
       'fetchRepeaterBookJson',
+      'getRepeaterBookToken',
+      'setRepeaterBookToken',
       'listRollbackSnapshots',
       'saveRollbackSnapshot',
       'deleteRollbackSnapshot',

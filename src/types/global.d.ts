@@ -19,6 +19,10 @@ export interface ElectronBridgeApi {
   platform: string;
   /** Proxy RepeaterBook API HTTP GET requests in Electron main process to avoid browser CORS restrictions */
   fetchRepeaterBookJson: (url: string, apiToken?: string) => Promise<unknown>;
+  /** The saved RepeaterBook token (stored encrypted by the main process), or '' */
+  getRepeaterBookToken: () => Promise<string>;
+  /** Saves (or, when blank, deletes) the RepeaterBook token; false when it can't be encrypted */
+  setRepeaterBookToken: (token: string) => Promise<boolean>;
   /** Read all snapshots from the local Rollback Vault */
   listRollbackSnapshots: () => Promise<RollbackSnapshot[]>;
   /** Save a snapshot to the local Rollback Vault */
