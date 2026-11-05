@@ -32,7 +32,7 @@ import {
   AlertTriangle,
   Info,
 } from 'lucide-react';
-import type { ChannelInsertionMode, ChannelRecord, RepeaterBandOptions, RepeaterBookQuery } from '../types/radio';
+import type { ChannelInsertionMode, ChannelRecord, RepeaterBandOptions, RepeaterBookQuery, ToneType } from '../types/radio';
 import {
   NormalizedRepeaterCandidate,
   RepeaterBandId,
@@ -61,6 +61,13 @@ interface ImportModalProps {
 }
 
 type ImportTab = 'repeaterbook' | 'chirp' | 'quickpacks';
+
+/** A tone as RepeaterBook writes it: `CSQ` (none), `100.0 Hz`, or `D023N` / `D023I`. */
+function formatTone(type: ToneType, value: number): string {
+  if (type === 'None') return 'CSQ';
+  if (type === 'CTCSS') return `${value.toFixed(1)} Hz`;
+  return `D${String(value).padStart(3, '0')}${type === 'DCS_I' ? 'I' : 'N'}`;
+}
 
 export const ImportModal: React.FC<ImportModalProps> = ({
   isOpen,
@@ -935,11 +942,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 {(item.txFreqHz / 1_000_000).toFixed(4)}
                               </td>
                               <td className="py-2 px-3 text-slate-300">
-                                {item.txToneType === 'None'
-                                  ? 'CSQ'
-                                  : item.txToneType === 'CTCSS'
-                                  ? `${item.txToneValue.toFixed(1)} Hz`
-                                  : `D${String(item.txToneValue).padStart(3, '0')}`}
+                                {formatTone(item.txToneType, item.txToneValue)}
+                                {item.rxToneType !== 'None' && ` / ${formatTone(item.rxToneType, item.rxToneValue)}`}
                               </td>
                               <td className="py-2 px-3 font-sans text-slate-400">
                                 {item.city}, {item.state}

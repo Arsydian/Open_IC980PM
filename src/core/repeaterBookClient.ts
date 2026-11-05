@@ -379,13 +379,15 @@ export function parseRepeaterBookTone(toneStr?: string): { type: ToneType; value
     return { type: 'None', value: CTCSS_TONES[0] };
   }
 
-  // Check DCS format: D023N, D023I, D023, etc.
-  const dcsMatch = /^D?(\d{3})([NI])?$/i.exec(s);
-  if (dcsMatch) {
-    const code = parseInt(dcsMatch[1], 10);
-    const polarity = dcsMatch[2] === 'I' ? 'DCS_I' : 'DCS_N';
-    const validCode = DCS_CODES.includes(code) ? code : DCS_CODES[0];
-    return { type: polarity, value: validCode };
+  // DCS: D023N, D023I, D023, or a bare 023. A bare three-digit number that is a standard CTCSS
+  // frequency ("100", "123") is a CTCSS tone written without its decimal, not a DCS code
+  const dcsMatch = /^(D)?(\d{3})([NI])?$/.exec(s);
+  const bareCtcss = dcsMatch && !dcsMatch[1] && !dcsMatch[3] && CTCSS_TONES.includes(parseFloat(s));
+  if (dcsMatch && !bareCtcss) {
+    const code = parseInt(dcsMatch[2], 10);
+    // A code the radio doesn't have is left off rather than replaced by a different code
+    if (!DCS_CODES.includes(code)) return { type: 'None', value: CTCSS_TONES[0] };
+    return { type: dcsMatch[3] === 'I' ? 'DCS_I' : 'DCS_N', value: code };
   }
 
   // Check CTCSS frequency in Hz
@@ -666,9 +668,14 @@ export function filterAndNormalizeRepeaterBookResults(
       }
     }
 
-    // 6. Parse Subaudio Tones (PL = TX tone to open repeater, TSQ = RX tone squelch)
+    // 6. Subaudio tones: PL is the uplink (TX) tone that opens the repeater. The TSQ downlink tone
+    // is set as receive squelch only when it differs from PL; otherwise receive is left open
     const txTone = parseRepeaterBookTone(entry.PL);
-    const rxTone = parseRepeaterBookTone(entry.TSQ);
+    const downlinkTone = parseRepeaterBookTone(entry.TSQ);
+    const rxTone =
+      downlinkTone.type !== txTone.type || downlinkTone.value !== txTone.value
+        ? downlinkTone
+        : parseRepeaterBookTone(undefined);
 
     const callsign = (entry.Callsign || '').trim().toUpperCase();
     const state = (entry.State || entry['State ID'] || '').trim();

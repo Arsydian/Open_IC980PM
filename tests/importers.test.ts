@@ -17,6 +17,7 @@ import {
   filterAndNormalizeRepeaterBookResults,
   formatCityCallsignName,
   locateCity,
+  parseRepeaterBookTone,
   radiusNotice,
   RepeaterBookRawEntry,
 } from '../src/core/repeaterBookClient';
@@ -374,6 +375,45 @@ describe('RepeaterBook city search', () => {
     );
     expect(noticeFor([placed, unplaced('W4B'), unplaced('W4C')])).toContain('2 of these repeaters have no location');
     expect(noticeFor([])).toBeUndefined();
+  });
+
+  it('reads CTCSS tones written without a decimal, and never swaps in a different DCS code', () => {
+    expect(parseRepeaterBookTone('100')).toEqual({ type: 'CTCSS', value: 100.0 });
+    expect(parseRepeaterBookTone('123')).toEqual({ type: 'CTCSS', value: 123.0 });
+    expect(parseRepeaterBookTone('88.5')).toEqual({ type: 'CTCSS', value: 88.5 });
+    expect(parseRepeaterBookTone('023')).toEqual({ type: 'DCS_N', value: 23 });
+    expect(parseRepeaterBookTone('D023I')).toEqual({ type: 'DCS_I', value: 23 });
+    expect(parseRepeaterBookTone('d754n')).toEqual({ type: 'DCS_N', value: 754 });
+    expect(parseRepeaterBookTone('D100').type).toBe('None');
+  });
+
+  it('sets the downlink (TSQ) tone as receive squelch only when it differs from the uplink (PL) tone', () => {
+    const rpt = (callsign: string, PL: string, TSQ: string): RepeaterBookRawEntry => ({
+      Frequency: '146.94', 'Input Freq': '146.34', 'Nearest City': 'Nashville', Callsign: callsign, PL, TSQ,
+    });
+    const res = filterAndNormalizeRepeaterBookResults(
+      [
+        rpt('W4SAME', '100.0', '100.0'),
+        rpt('W4SAMEFMT', '100', '100.0'),
+        rpt('W4DIFF', '100.0', '123.0'),
+        rpt('W4NOTSQ', '107.2', ''),
+        rpt('W4DCSSAME', 'D023N', 'D023N'),
+        rpt('W4DCSPOL', 'D023N', 'D023I'),
+        rpt('W4TSQONLY', '', '88.5'),
+      ],
+      nashvilleQuery
+    );
+    const tones = Object.fromEntries(
+      res.map((r) => [r.callsign, [r.txToneType, r.txToneValue, r.channelRecord.rxToneType, r.channelRecord.rxToneValue]])
+    );
+    expect(tones.W4SAME).toEqual(['CTCSS', 100.0, 'None', 67.0]);
+    expect(tones.W4SAMEFMT).toEqual(['CTCSS', 100.0, 'None', 67.0]);
+    expect(tones.W4DIFF).toEqual(['CTCSS', 100.0, 'CTCSS', 123.0]);
+    expect(tones.W4NOTSQ).toEqual(['CTCSS', 107.2, 'None', 67.0]);
+    expect(tones.W4DCSSAME).toEqual(['DCS_N', 23, 'None', 67.0]);
+    expect(tones.W4DCSPOL).toEqual(['DCS_N', 23, 'DCS_I', 23]);
+    expect(tones.W4TSQONLY).toEqual(['None', 67.0, 'CTCSS', 88.5]);
+    expect(res.find((r) => r.callsign === 'W4SAME')?.rxToneType).toBe('None');
   });
 
   it('links each repeater to its RepeaterBook page, under row_repeaters/ outside North America', () => {
